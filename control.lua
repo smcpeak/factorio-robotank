@@ -81,7 +81,37 @@ local function remove_invalid_vehicles()
         log("Removed invalid vehicle " .. unit_number .. ".");
       end;
     end;
-    log("Force " .. force .. " has " .. num_vehicles .. " vehicles.");
+    --log("Force " .. force .. " has " .. num_vehicles .. " vehicles.");
+  end;
+end;
+
+local function find_player_vehicle(vehicles)
+  for unit_number, v in pairs(vehicles) do
+    if ((v.passenger ~= nil) and (v.passenger.type == "player")) then
+      --log("Player vehicle is unit " .. v.unit_number);
+      return v;
+    end;
+  end;
+end;
+
+local function drive_vehicles()
+  for force, vehicles in pairs(force_to_vehicles) do
+    local player_vehicle = find_player_vehicle(vehicles);
+    if (player_vehicle == nil) then
+      --log("Force " .. force .. " does not have a player vehicle.");
+    else
+      for unit_number, v in pairs(vehicles) do
+        if (v ~= player_vehicle) then
+          local old_speed = v.speed;
+          local old_orientation = v.orientation;
+          v.speed = player_vehicle.speed;
+          v.orientation = player_vehicle.orientation;
+          --log("Changed vehicle " .. v.unit_number ..
+          --    " speed from " .. old_speed .. " to " .. v.speed ..
+          --    " and orientation from " .. old_orientation .. " to " .. v.orientation);
+        end;
+      end;
+    end;
   end;
 end;
 
@@ -91,12 +121,12 @@ script.on_event(defines.events.on_tick, function(e)
     find_vehicles();
   end;
 
-  if not ((e.tick % 60) == 0) then return; end;
-  log("VehicleLeash once per second event called.");
+  --if not ((e.tick % 60) == 0) then return; end;
+  --log("VehicleLeash once per second event called.");
 
   remove_invalid_vehicles();
 
-
+  drive_vehicles();
 end);
 
 -- On built entity: add to tables.
