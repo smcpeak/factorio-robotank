@@ -119,8 +119,12 @@ local function pos_in_front_of(ent, distance)
   return add_vec(ent.position, displacement);
 end;
 
+local function mag_sq(v)
+  return v.x * v.x + v.y * v.y;
+end;
+
 local function magnitude(v)
-  return math.sqrt(v.x * v.x + v.y * v.y);
+  return math.sqrt(mag_sq(v));
 end;
 
 local function normalize_vec(v)
@@ -174,12 +178,30 @@ local function table_size(t)
   return ct;
 end;
 
-local function drive_vehicles()
+-- Get the velocity vector of a vehicle in meters (game units) per tick.
+local function vehicle_velocity(v)
+  local direction = orientation_to_unit_vector(v.orientation);
+  return multiply_vec(direction, v.speed);
+end;
+
+-- Rotate a vector by a given angle.  This works for the standard coordinate
+-- system with +y up and counterclockwise angles, as well as the Factorio
+-- coordinate system with +y down and clockwise angles.
+local function rotate_vec(v, radians)
+  return {
+    x = v.x * math.cos(radians) - v.y * math.sin(radians),
+    y = v.x * math.sin(radians) + v.y * math.cos(radians),
+  };
+end;
+
+local function drive_vehicles(tick_num)
   for force, vehicles in pairs(force_to_vehicles) do
     local player_vehicle = find_player_vehicle(vehicles);
     if (player_vehicle == nil) then
       --log("Force " .. force .. " does not have a player vehicle.");
     else
+      local player_velocity = vehicle_velocity(player_vehicle);
+
       -- Compute a desired slave vehicle position in front of the player vehicle.
       local desired_pos = pos_in_front_of(player_vehicle, 15);
       --log("PV is at " .. serpent.line(player_vehicle.position) ..
@@ -197,19 +219,94 @@ local function drive_vehicles()
 
       for unit_number, v in ordered_pairs(vehicles) do
         if (v ~= player_vehicle) then
+          -- Calculate the displacement between where we are now and where
+          -- we want to be in formation in front of the player's vehicle.
           local full_lateral = multiply_vec(lateral_vec, lateral_fact);
           lateral_fact = lateral_fact - 1;
           local displacement = subtract_vec(add_vec(desired_pos, full_lateral), v.position);
-          local disp_mag = magnitude(displacement);
-          if (disp_mag > 0.1) then
-            v.orientation = unit_vector_to_orientation(normalize_vec(displacement));
-            v.speed = math.min(0.2, disp_mag / 3.0 * 0.1);
-            --log("For disp " .. serpent.line(displacement) ..
-            --    ", setting orientation to " .. v.orientation ..
-            --    " and speed to " .. v.speed .. ".");
+
+          -- Goal here is to decide how to accelerate and turn.
+          local pedal = defines.riding.acceleration.nothing;
+          local pedal_string = "nothing";
+          local turn = defines.riding.direction.straight;
+          local turn_string = "straight";
+
+          -- Current vehicle velocity.
+          local cur_velocity = vehicle_velocity(v);
+
+          -- What will the displacement be if we stand still and the player
+          -- maintains speed and direction?
+          local next_disp = add_vec(displacement, player_velocity);
+
+          -- What will be the displacement in one tick if we maintain speed
+          -- and direction?
+          local projected_straight_disp = subtract_vec(next_disp, cur_velocity);
+          local projected_straight_dist = magnitude(projected_straight_disp);
+          if (projected_straight_dist < 0.1) then
+            -- We will be close to the target position.
+            if ((player_vehicle.speed == 0) and v.speed > 0) then
+              -- Hack: player is stopped, we should stop too.  (I would prefer that
+              -- this behavior emerge naturally without making a special case.)
+              pedal = defines.riding.acceleration.braking;
+              pedal_string = "braking";
+            else
+              -- Just coast straight.
+            end;
+
           else
-            v.speed = 0;
-            --log("Stopping vehicle.");
+            -- Compute orientation in [0,1] that will reduce displacement.
+            local desired_orientation = unit_vector_to_orientation(normalize_vec(projected_straight_disp));
+
+            -- Difference with current orientation.
+            local diff_orient = v.orientation - desired_orientation;
+            if (diff_orient > 0.5) then
+              diff_orient = diff_orient - 1;
+            elseif (diff_orient < -0.5) then
+              diff_orient = diff_orient + 1;
+            end;
+
+            if (diff_orient > 0.1) then
+              -- Coast and turn left.
+              turn = defines.riding.direction.left;
+              turn_string = "left";
+            elseif (diff_orient < -0.1) then
+              -- Coast and turn right.
+              turn = defines.riding.direction.right;
+              turn_string = "right";
+            else
+              -- Turn if we're not quite in line, then decide whether
+              -- to accelerate.
+              if (diff_orient > 0.01) then
+                turn = defines.riding.direction.left;
+                turn_string = "left";
+              elseif (diff_orient < -0.01) then
+                turn = defines.riding.direction.right;
+                turn_string = "right";
+              end;
+
+              -- Desired speed as a function of projected distance to target.
+              local desired_speed =
+                projected_straight_dist * 0.01 +
+                projected_straight_dist * projected_straight_dist * 0.001;
+
+              if (desired_speed > v.speed) then
+                pedal = defines.riding.acceleration.accelerating;
+                pedal_string = "accelerating";
+              elseif (desired_speed < v.speed - 0.001) then
+                pedal = defines.riding.acceleration.braking;
+                pedal_string = "braking";
+              end;
+            end;
+          end;
+
+          -- Apply the desired controls to the vehicle.
+          v.riding_state = {
+            acceleration = pedal,
+            direction = turn,
+          };
+
+          if (tick_num % 60 == 0) then
+            log("pedal=" .. pedal_string .. ", turn=" .. turn_string);
           end;
         end;
       end;
@@ -223,12 +320,12 @@ script.on_event(defines.events.on_tick, function(e)
     find_vehicles();
   end;
 
-  if not ((e.tick % 30) == 0) then return; end;
+  --if not ((e.tick % 30) == 0) then return; end;
   --log("VehicleLeash once per half-second event called.");
 
   remove_invalid_vehicles();
 
-  drive_vehicles();
+  drive_vehicles(e.tick);
 end);
 
 -- On built entity: add to tables.
