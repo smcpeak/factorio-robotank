@@ -199,6 +199,13 @@ local function drive_vehicles(tick_num)
     local player_vehicle = find_player_vehicle(vehicles);
     if (player_vehicle == nil) then
       --log("Force " .. force .. " does not have a player vehicle.");
+      for unit_number, v in ordered_pairs(vehicles) do
+        -- Don't let the vehicles run away when I jump out.
+        v.riding_state = {
+          acceleration = defines.riding.acceleration.nothing;
+          direction = defines.riding.direction.straight;
+        };
+      end;
     else
       local player_velocity = vehicle_velocity(player_vehicle);
 
