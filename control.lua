@@ -94,21 +94,123 @@ local function find_player_vehicle(vehicles)
   end;
 end;
 
+-- "Orientation" in Factor is a floating-point number in [0,1]
+-- where 0 is North, 0.25 is East, 0.5 is South, and 0.75 is West.
+-- Convert that to a unit vector where +x is East and +y is South.
+local function orientation_to_unit_vector(orientation)
+  -- Angle measured from East toward South, in radians.
+  local angle = (orientation - 0.25) / 1.00 * 2.00 * math.pi;
+  return {x = math.cos(angle), y = math.sin(angle)};
+end;
+
+-- Multiply a 2D vector by a scalar.
+local function multiply_vec(v, scalar)
+  return {x = v.x * scalar, y = v.y * scalar};
+end;
+
+-- Add two 2D vectors.
+local function add_vec(v1, v2)
+  return { x = v1.x + v2.x, y = v1.y + v2.y };
+end;
+
+local function pos_in_front_of(ent, distance)
+  local orient_vec = orientation_to_unit_vector(ent.orientation);
+  local displacement = multiply_vec(orient_vec, distance);
+  return add_vec(ent.position, displacement);
+end;
+
+local function magnitude(v)
+  return math.sqrt(v.x * v.x + v.y * v.y);
+end;
+
+local function normalize_vec(v)
+  if ((v.x == 0) and (v.y == 0)) then
+    return v;
+  else
+    return multiply_vec(v, 1.0 / magnitude(v));
+  end;
+end;
+
+local function subtract_vec(v1, v2)
+  return { x = v1.x - v2.x, y = v1.y - v2.y };
+end;
+
+local function unit_vector_to_orientation(v)
+  -- Angle South of East, in radians.
+  local angle = math.atan2(v.y, v.x);
+
+  -- Convert to orientation in [-0.25, 0.75].
+  local orientation = angle / (2 * math.pi) + 0.25;
+
+  -- Raise to [0,1].
+  if (orientation < 0) then
+    orientation = orientation + 1;
+  end;
+
+  return orientation;
+end;
+
+-- https://www.lua.org/pil/19.3.html
+local function ordered_pairs (t, f)
+  local a = {}
+  for n in pairs(t) do table.insert(a, n) end
+  table.sort(a, f)
+  local i = 0      -- iterator variable
+  local iter = function ()   -- iterator function
+    i = i + 1
+    if a[i] == nil then return nil
+    else return a[i], t[a[i]]
+    end
+  end
+  return iter
+end;
+
+-- Number of table entries.  How is this not built in to Lua?
+local function table_size(t)
+  local ct = 0;
+  for _, _ in pairs(t) do
+    ct = ct + 1;
+  end;
+  return ct;
+end;
+
 local function drive_vehicles()
   for force, vehicles in pairs(force_to_vehicles) do
     local player_vehicle = find_player_vehicle(vehicles);
     if (player_vehicle == nil) then
       --log("Force " .. force .. " does not have a player vehicle.");
     else
-      for unit_number, v in pairs(vehicles) do
+      -- Compute a desired slave vehicle position in front of the player vehicle.
+      local desired_pos = pos_in_front_of(player_vehicle, 15);
+      --log("PV is at " .. serpent.line(player_vehicle.position) ..
+      --     " with orientation " .. player_vehicle.orientation ..
+      --     ", desired_pos is " .. serpent.line(desired_pos));
+
+      -- Size the formation based on the number of vehicles, assuming that
+      -- one is the player vehicle.
+      local formation_size = table_size(vehicles) - 1;
+
+      -- Side-to-side offset for each additional unit.
+      local lateral_vec = orientation_to_unit_vector(player_vehicle.orientation + 0.25);
+      lateral_vec = multiply_vec(lateral_vec, 5);     -- 5 is the spacing.
+      local lateral_fact = formation_size / 2;
+
+      for unit_number, v in ordered_pairs(vehicles) do
         if (v ~= player_vehicle) then
-          local old_speed = v.speed;
-          local old_orientation = v.orientation;
-          v.speed = player_vehicle.speed;
-          v.orientation = player_vehicle.orientation;
-          --log("Changed vehicle " .. v.unit_number ..
-          --    " speed from " .. old_speed .. " to " .. v.speed ..
-          --    " and orientation from " .. old_orientation .. " to " .. v.orientation);
+          local full_lateral = multiply_vec(lateral_vec, lateral_fact);
+          lateral_fact = lateral_fact - 1;
+          local displacement = subtract_vec(add_vec(desired_pos, full_lateral), v.position);
+          local disp_mag = magnitude(displacement);
+          if (disp_mag > 0.1) then
+            v.orientation = unit_vector_to_orientation(normalize_vec(displacement));
+            v.speed = math.min(0.2, disp_mag / 3.0 * 0.1);
+            --log("For disp " .. serpent.line(displacement) ..
+            --    ", setting orientation to " .. v.orientation ..
+            --    " and speed to " .. v.speed .. ".");
+          else
+            v.speed = 0;
+            --log("Stopping vehicle.");
+          end;
         end;
       end;
     end;
@@ -121,8 +223,8 @@ script.on_event(defines.events.on_tick, function(e)
     find_vehicles();
   end;
 
-  --if not ((e.tick % 60) == 0) then return; end;
-  --log("VehicleLeash once per second event called.");
+  if not ((e.tick % 30) == 0) then return; end;
+  --log("VehicleLeash once per half-second event called.");
 
   remove_invalid_vehicles();
 
