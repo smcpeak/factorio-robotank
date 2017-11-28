@@ -250,6 +250,21 @@ local function maybe_fire_gun(tick, controller)
       position = controller.vehicle.position,
       max_distance = 20,      -- range of machine gun in tank
       force = controller.vehicle.force};
+
+    if (controller.attack_target ~= nil) then
+      if (controller.attack_target.type == "unit") then
+        -- We're about to fire at this target.  Aggro it.
+        --
+        -- This does not work properly.  The same enemy
+        -- can get aggrod many times, causing it to ping-pong
+        -- among its attackers, and its friends do not join in.
+        -- Also, this does not aggo worms.
+        controller.attack_target.set_command{
+          type = defines.command.attack,
+          target = controller.vehicle,
+        };
+      end;
+    end;
   end;
 
   -- If we now have a target, shoot at it.
@@ -272,7 +287,7 @@ local function maybe_fire_gun(tick, controller)
     local target_name = controller.attack_target.name;
     -- This is 8 damage for piercing rounds normally, +80% for
     -- the research bonus.
-    local damage_done = controller.attack_target.damage(14, controller.vehicle.force);
+    local damage_done = controller.attack_target.damage(14, controller.vehicle.force, "physical");
     --log("Vehicle " .. controller.vehicle.unit_number ..
     --    " attacked enemy " .. target_name ..
     --    " for " .. damage_done .. " damage.");
