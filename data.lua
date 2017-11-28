@@ -84,6 +84,7 @@ robotank_turret_entity.flags = {
   "player-creation",        -- Supposedly this factors into enemy aggro.
   "placeable-off-grid",     -- Allow initial placement to be right where I put it.
   "not-on-map",             -- Do not draw the turret on the minimap.
+  "not-repairable",         -- Bots cannot repair the turret.
 };
 
 -- Push these new things into the main data table.

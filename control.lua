@@ -265,23 +265,47 @@ local function equal_vec(v1, v2)
   return v1.x == v2.x and v1.y == v2.y;
 end;
 
--- Possibly locate a target enemy and fire at it.
-local function maybe_fire_gun(tick, controller)
-  if (controller.vehicle.name == "robotank-entity") then
-    -- Do not fire the robotank itself, the turret should do that.
-    -- But we do need to keep the turret with the tank.
-    if (controller.turret ~= nil and
-        not equal_vec(controller.vehicle.position, controller.previous_position)) then
-      controller.previous_position = table.deepcopy(controller.vehicle.position);
-      local res = controller.turret.teleport(controller.vehicle.position);
-      if (not res) then
-        log("Cannot move the turret!  Removing it...");
-        controller.turret = nil;
+-- Do per-tick updates of robotanks.
+local function update_robotanks(tick)
+  for force, vehicles in pairs(force_to_vehicles) do
+    for unit_number, controller in ordered_pairs(vehicles) do
+      if (controller.vehicle.name == "robotank-entity") then
+        if (controller.turret ~= nil) then
+          -- Transfer any damage sustained by the turret to the tank.
+          -- (This effectively uses the turret's resistances as those of
+          -- the tank.)
+          local damage = 400 - controller.turret.health;
+          if (damage > 0) then
+            if (controller.vehicle.health <= damage) then
+              log("Fatal damage being transferred to robotank " .. unit_number .. ".");
+              controller.turret.destroy();
+              controller.vehicle.die();      -- Make an explosion.
+              controller.turret = nil;
+              vehicles[unit_number] = nil;
+              break;
+            else
+              controller.vehicle.health = controller.vehicle.health - damage;
+              controller.turret.health = 400;
+            end;
+          end;
+
+          -- Keep the turret with the tank.
+          if (not equal_vec(controller.vehicle.position, controller.previous_position)) then
+            controller.previous_position = table.deepcopy(controller.vehicle.position);
+            local res = controller.turret.teleport(controller.vehicle.position);
+            if (not res) then
+              log("Cannot move the turret!  Removing it...");
+              controller.turret = nil;
+            end;
+          end;
+        end;
       end;
     end;
-    return;
   end;
+end;
 
+-- Possibly locate a target enemy and fire at it.
+local function maybe_fire_gun(tick, controller)
   -- Tank machine gun normally fires once every 4 ticks, but here
   -- I am replicating the +110% shoot speed bonus I have researched.
   if (controller.last_gun_fire_tick + 2 > tick) then
@@ -480,7 +504,7 @@ local function drive_vehicles(tick_num)
             direction = turn,
           };
 
-          maybe_fire_gun(tick_num, controller);
+          --maybe_fire_gun(tick_num, controller);
 
           if (tick_num % 60 == 0) then
             log("pedal=" .. pedal_string .. ", turn=" .. turn_string);
@@ -502,6 +526,7 @@ script.on_event(defines.events.on_tick, function(e)
 
   remove_invalid_vehicles();
 
+  update_robotanks(e.tick)
   drive_vehicles(e.tick);
 end);
 
