@@ -43,14 +43,24 @@ end);
 local found_vehicles = false;
 
 -- Map from force to its vehicles.  Each force's vehicles are a map
--- from unit_number to the vehicle entity.
+-- from unit_number to its vehicle_controller object.
 local force_to_vehicles = {};
+
+-- Control state for a vehicle.  All vehicles have control states,
+-- including the player vehicle (if any).
+local function new_vehicle_controller(v)
+  return {
+    -- Reference to the Factorio vehicle entity.
+    vehicle = v;
+  };
+end;
 
 -- Add a vehicle to our table.
 local function add_vehicle(v)
   local force_name = string_or_name_of(v.force);
-  force_to_vehicles[force_name] = force_to_vehicles[force_name] or {};
-  force_to_vehicles[force_name][v.unit_number] = v;
+  force_to_vehicles[force_name] = force_to_vehicles[force_name] or {}
+  force_to_vehicles[force_name][v.unit_number] = new_vehicle_controller(v);
+
   log("Vehicle " .. v.unit_number ..
       " with name " .. v.name ..
       " at (" .. v.position.x .. "," .. v.position.y .. ")" ..
@@ -73,8 +83,8 @@ end;
 local function remove_invalid_vehicles()
   for force, vehicles in pairs(force_to_vehicles) do
     local num_vehicles = 0;
-    for unit_number, v in pairs(vehicles) do
-      if (v.valid) then
+    for unit_number, controller in pairs(vehicles) do
+      if (controller.vehicle.valid) then
         num_vehicles = num_vehicles + 1;
       else
         vehicles[unit_number] = nil;
@@ -86,7 +96,8 @@ local function remove_invalid_vehicles()
 end;
 
 local function find_player_vehicle(vehicles)
-  for unit_number, v in pairs(vehicles) do
+  for unit_number, controller in pairs(vehicles) do
+    local v = controller.vehicle;
     if ((v.passenger ~= nil) and (v.passenger.type == "player")) then
       --log("Player vehicle is unit " .. v.unit_number);
       return v;
@@ -199,9 +210,9 @@ local function drive_vehicles(tick_num)
     local player_vehicle = find_player_vehicle(vehicles);
     if (player_vehicle == nil) then
       --log("Force " .. force .. " does not have a player vehicle.");
-      for unit_number, v in ordered_pairs(vehicles) do
+      for unit_number, controller in ordered_pairs(vehicles) do
         -- Don't let the vehicles run away when I jump out.
-        v.riding_state = {
+        controller.vehicle.riding_state = {
           acceleration = defines.riding.acceleration.nothing;
           direction = defines.riding.direction.straight;
         };
@@ -224,7 +235,8 @@ local function drive_vehicles(tick_num)
       lateral_vec = multiply_vec(lateral_vec, 5);     -- 5 is the spacing.
       local lateral_fact = formation_size / 2;
 
-      for unit_number, v in ordered_pairs(vehicles) do
+      for unit_number, controller in ordered_pairs(vehicles) do
+        local v = controller.vehicle;
         if (v ~= player_vehicle) then
           -- Calculate the displacement between where we are now and where
           -- we want to be in formation in front of the player's vehicle.
