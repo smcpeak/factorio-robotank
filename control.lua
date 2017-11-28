@@ -92,17 +92,6 @@ local function add_vehicle(v)
         force = v.force};
       if (controller.turret) then
         log("Made new turret.");
-
-        -- For the moment, just put some ammo in on creation.
-        local inv = controller.turret.get_inventory(defines.inventory.turret_ammo);
-        if (inv) then
-          local inserted = inv.insert("piercing-rounds-magazine");
-          if (inserted == 0) then
-            log("Failed to add ammo to turret!");
-          end;
-        else
-          log("Failed to get turret inventory!");
-        end;
       else
         log("Failed to create turret!");
       end;
@@ -270,6 +259,25 @@ local function equal_vec(v1, v2)
   return v1.x == v2.x and v1.y == v2.y;
 end;
 
+-- Get the name of some bullet ammo in the given inventory,
+-- or nil if there is none.
+local function get_bullet_ammo(inv)
+  for name, count in pairs(inv.get_contents()) do
+    local proto = game.item_prototypes[name];
+    if (proto) then
+      --log("ammo type: " .. serpent.block(proto.get_ammo_type("turret")));
+      if (proto.type == "ammo") then
+        local ammo_type = proto.get_ammo_type("turret");
+        if (ammo_type.category == "bullet") then
+          return name;
+        end;
+      end;
+    else
+      log("No prototype for item: " + name);
+    end;
+  end;
+end;
+
 -- Do per-tick updates of robotanks.
 local function update_robotanks(tick)
   for force, vehicles in pairs(force_to_vehicles) do
@@ -297,10 +305,37 @@ local function update_robotanks(tick)
           -- Keep the turret with the tank.
           if (not equal_vec(controller.vehicle.position, controller.previous_position)) then
             controller.previous_position = table.deepcopy(controller.vehicle.position);
-            local res = controller.turret.teleport(controller.vehicle.position);
-            if (not res) then
-              log("Cannot move the turret!  Removing it...");
-              controller.turret = nil;
+            if (not controller.turret.teleport(controller.vehicle.position)) then
+              log("Failed to teleport turret!");
+            end;
+          end;
+
+          -- See if the turret needs another ammo magazine.
+          local turret_inv = controller.turret.get_inventory(defines.inventory.turret_ammo);
+          if (not turret_inv) then
+            log("Failed to get turret inventory!");
+            break;
+          end;
+          if (turret_inv.is_empty()) then
+            -- Check the vehicle's trunk for ammo.
+            local car_inv = controller.vehicle.get_inventory(defines.inventory.car_trunk);
+            if (car_inv) then
+              local ammo_type = get_bullet_ammo(car_inv);
+              if (ammo_type) then
+                local got = car_inv.remove{name=ammo_type, count=10};
+                if (got < 1) then
+                  log("Failed to remove ammo from trunk!");
+                else
+                  local put = turret_inv.insert{name=ammo_type, count=got};
+                  if (put < 1) then
+                    log("Failed to add ammo to turret!");
+                  else
+                    log("Loaded " .. put .. " ammo magazines of type: " .. ammo_type);
+                  end;
+                end;
+              end;
+            else
+              log("Failed to get car inventory!");
             end;
           end;
         end;
