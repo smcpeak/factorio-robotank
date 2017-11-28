@@ -50,8 +50,19 @@ local force_to_vehicles = {};
 -- including the player vehicle (if any).
 local function new_vehicle_controller(v)
   return {
-    -- Reference to the Factorio vehicle entity.
-    vehicle = v;
+    -- Reference to the Factorio vehicle entity we are controlling.
+    vehicle = v,
+
+    -- Current attack target entity, if any.
+    attack_target = nil,
+
+    -- Last time we fired our gun.  This is used to limit the
+    -- rate of fire.
+    last_gun_fire_tick = 0,
+
+    -- Last time we ran an enemy search.  This limits the frequency
+    -- of searches, to limit the impact on game FPS.
+    last_target_search_tick = 0,
   };
 end;
 
@@ -205,6 +216,57 @@ local function rotate_vec(v, radians)
   };
 end;
 
+-- Possibly locate a target enemy and fire at it.
+local function maybe_fire_gun(tick, controller)
+  -- Tank machine gun normally fires once every 4 ticks, but here
+  -- I am replicating the +110% shoot speed bonus I have researched.
+  if (controller.last_gun_fire_tick + 2 > tick) then
+    -- Gun was fired too recently.
+    return;
+  end;
+
+  -- If we already have a target, check that it still exists
+  -- and is within range.  If not, clear it.
+  if (controller.attack_target ~= nil) then
+    if (not controller.attack_target.valid) then
+      controller.attack_target = nil;
+    else
+      local dist = magnitude(
+        subtract_vec(controller.attack_target.position, controller.vehicle.position));
+      if (dist > 20) then
+        controller.attack_target = nil;
+      end;
+    end;
+  end;
+
+  -- If we now do not have a target, search for one.
+  if (controller.attack_target == nil) then
+    if (controller.last_target_search_tick + 10 > tick) then
+      -- Search was done too recently.
+      return;
+    end;
+    controller.last_target_search_tick = tick;
+    controller.attack_target = controller.vehicle.surface.find_nearest_enemy{
+      position = controller.vehicle.position,
+      max_distance = 20,      -- range of machine gun in tank
+      force = controller.vehicle.force};
+  end;
+
+  -- If we now have a target, shoot at it.
+  if (controller.attack_target ~= nil) then
+    controller.last_gun_fire_tick = tick;
+    local target_name = controller.attack_target.name;
+    -- This is 8 damage for piercing rounds normally, +80% for
+    -- the research bonus.
+    local damage_done = controller.attack_target.damage(14, controller.vehicle.force);
+    --log("Vehicle " .. controller.vehicle.unit_number ..
+    --    " attacked enemy " .. target_name ..
+    --    " for " .. damage_done .. " damage.");
+  end;
+
+end;
+
+
 local function drive_vehicles(tick_num)
   for force, vehicles in pairs(force_to_vehicles) do
     local player_vehicle = find_player_vehicle(vehicles);
@@ -323,6 +385,8 @@ local function drive_vehicles(tick_num)
             acceleration = pedal,
             direction = turn,
           };
+
+          maybe_fire_gun(tick_num, controller);
 
           if (tick_num % 60 == 0) then
             log("pedal=" .. pedal_string .. ", turn=" .. turn_string);
