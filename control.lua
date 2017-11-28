@@ -53,6 +53,12 @@ local function new_vehicle_controller(v)
     -- Reference to the Factorio vehicle entity we are controlling.
     vehicle = v,
 
+    -- Associated turret entity that does the shooting.
+    turret = nil,
+
+    -- Vehicle's position dueing the previous tick.
+    previous_position = v.position,
+
     -- Current attack target entity, if any.
     attack_target = nil,
 
@@ -70,7 +76,38 @@ end;
 local function add_vehicle(v)
   local force_name = string_or_name_of(v.force);
   force_to_vehicles[force_name] = force_to_vehicles[force_name] or {}
-  force_to_vehicles[force_name][v.unit_number] = new_vehicle_controller(v);
+  local controller = new_vehicle_controller(v);
+  force_to_vehicles[force_name][v.unit_number] = controller;
+
+  if (v.name == "robotank-entity") then
+    -- Is there already an associated turret here?
+    controller.turret =
+      v.surface.find_entity("robotank-turret-entity", controller.vehicle.position);
+    if (controller.turret) then
+      log("Found existing turret.");
+    else
+      controller.turret = v.surface.create_entity{
+        name = "robotank-turret-entity",
+        position = controller.vehicle.position,
+        force = v.force};
+      if (controller.turret) then
+        log("Made new turret.");
+
+        -- For the moment, just put some ammo in on creation.
+        local inv = controller.turret.get_inventory(defines.inventory.turret_ammo);
+        if (inv) then
+          local inserted = inv.insert("piercing-rounds-magazine");
+          if (inserted == 0) then
+            log("Failed to add ammo to turret!");
+          end;
+        else
+          log("Failed to get turret inventory!");
+        end;
+      else
+        log("Failed to create turret!");
+      end;
+    end;
+  end;
 
   log("Vehicle " .. v.unit_number ..
       " with name " .. v.name ..
@@ -96,7 +133,15 @@ local function remove_invalid_vehicles()
     local num_vehicles = 0;
     for unit_number, controller in pairs(vehicles) do
       if (controller.vehicle.valid) then
-        num_vehicles = num_vehicles + 1;
+        if (controller.turret ~= nil and
+            not controller.turret.valid) then
+          -- Turret was destroyed, kill the tank too.
+          log("Turret of vehicle " .. unit_number .. " destroyed, killing tank too.");
+          controller.vehicle.destroy();
+          vehicles[unit_number] = nil;
+        else
+          num_vehicles = num_vehicles + 1;
+        end;
       else
         vehicles[unit_number] = nil;
         log("Removed invalid vehicle " .. unit_number .. ".");
@@ -216,8 +261,27 @@ local function rotate_vec(v, radians)
   };
 end;
 
+local function equal_vec(v1, v2)
+  return v1.x == v2.x and v1.y == v2.y;
+end;
+
 -- Possibly locate a target enemy and fire at it.
 local function maybe_fire_gun(tick, controller)
+  if (controller.vehicle.name == "robotank-entity") then
+    -- Do not fire the robotank itself, the turret should do that.
+    -- But we do need to keep the turret with the tank.
+    if (controller.turret ~= nil and
+        not equal_vec(controller.vehicle.position, controller.previous_position)) then
+      controller.previous_position = table.deepcopy(controller.vehicle.position);
+      local res = controller.turret.teleport(controller.vehicle.position);
+      if (not res) then
+        log("Cannot move the turret!  Removing it...");
+        controller.turret = nil;
+      end;
+    end;
+    return;
+  end;
+
   -- Tank machine gun normally fires once every 4 ticks, but here
   -- I am replicating the +110% shoot speed bonus I have researched.
   if (controller.last_gun_fire_tick + 2 > tick) then
