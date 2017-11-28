@@ -143,6 +143,11 @@ local function remove_invalid_vehicles()
           num_vehicles = num_vehicles + 1;
         end;
       else
+        if (controller.turret ~= nil and controller.turret.valid) then
+          controller.turret.destroy();
+          controller.turret = nil;
+          log("Removed turret from invalid vehicle.");
+        end;
         vehicles[unit_number] = nil;
         log("Removed invalid vehicle " .. unit_number .. ".");
       end;
