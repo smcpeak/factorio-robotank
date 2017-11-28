@@ -255,6 +255,20 @@ local function maybe_fire_gun(tick, controller)
   -- If we now have a target, shoot at it.
   if (controller.attack_target ~= nil) then
     controller.last_gun_fire_tick = tick;
+
+    -- Make noise and show something like the graphic for shooting.
+    local projectile = controller.vehicle.surface.create_entity{
+      name = "gunfire-entity",
+      position = controller.vehicle.position,
+      source = controller.vehicle,
+      target = controller.attack_target,
+      speed = 20};      -- I do not know what speed does here.
+    if (projectile == nil) then
+      log("Attempt to create explosion-hit projectile failed.");
+    end;
+
+    -- Grab the victim's name in case I want to log it.  The damage
+    -- call might invalidate the victim (I think).
     local target_name = controller.attack_target.name;
     -- This is 8 damage for piercing rounds normally, +80% for
     -- the research bonus.
@@ -262,6 +276,7 @@ local function maybe_fire_gun(tick, controller)
     --log("Vehicle " .. controller.vehicle.unit_number ..
     --    " attacked enemy " .. target_name ..
     --    " for " .. damage_done .. " damage.");
+
   end;
 
 end;

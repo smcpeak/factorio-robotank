@@ -26,10 +26,16 @@ leash_item.icons = {
   },
 };
 
+-- Gunfire graphics and sound.
+local gunfire_entity = table.deepcopy(data.raw.explosion["explosion-hit"]);
+gunfire_entity.name = "gunfire-entity";
+gunfire_entity.sound = table.deepcopy(data.raw.gun["tank-machine-gun"].attack_parameters.sound);
+
 -- Push these new things into the main data table.
 data:extend{
   leash_recipe,
   leash_item,
+  gunfire_entity,
 };
 
 
