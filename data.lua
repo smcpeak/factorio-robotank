@@ -72,6 +72,10 @@ robotank_turret_entity.name = "robotank-turret-entity";
 -- Do not collide with parent tank.
 robotank_turret_entity.collision_mask = {};
 
+-- Also empty the turret collision box, which otherwise interferes with
+-- an inserter trying to put items into the tank.
+robotank_turret_entity.collision_box = {{0,0}, {0,0}};
+
 -- Do not allow the turret to be individually selected.  This also
 -- cause its health bar to not appear.
 robotank_turret_entity.selection_box = {{0,0}, {0,0}};
