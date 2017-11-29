@@ -104,6 +104,16 @@ local function add_vehicle(v)
       " added to force " .. force_name);
 end;
 
+-- Find the controller object associated with the given vehicle, if any.
+local function find_robotank_controller(vehicle)
+  local controllers = force_to_vehicles[string_or_name_of(vehicle.force)];
+  if (controllers) then
+    return controllers[vehicle.unit_number];
+  else
+    return nil;
+  end;
+end;
+
 -- Scan the world for vehicles.
 local function find_vehicles()
   log("VehicleLeash: find_vehicles");
@@ -518,6 +528,35 @@ script.on_event({defines.events.on_built_entity, defines.events.on_robot_built_e
     end;
   end
 );
+
+-- Copy all items from 'source' to 'dest', returning the total number
+-- of items copied.  This duplicates the items, so should only be done
+-- when the source inventory is about to be destroyed.
+local function copy_inventory_from_to(source, dest)
+  local ret = 0
+  for name, count in pairs(source.get_contents()) do
+    ret = ret + dest.insert({name=name, count=count});
+  end;
+  return ret;
+end;
+
+script.on_event({defines.events.on_player_mined_entity},
+  function(e)
+    if (e.entity.name == "robotank-entity") then
+      -- When we pick up a robotank, also grab any unused ammo in
+      -- the turret entity so it is no lost.
+      local controller = find_robotank_controller(e.entity);
+      if (controller and controller.turret) then
+        local turret_inv = controller.turret.get_inventory(defines.inventory.turret_ammo);
+        if (turret_inv) then
+          local res = copy_inventory_from_to(turret_inv, e.buffer);
+          log("Grabbed " .. res .. " items from the turret before it was destroyed.");
+        end;
+      end;
+    end;
+  end
+);
+
 
 
 -- EOF
