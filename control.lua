@@ -61,14 +61,6 @@ local function new_vehicle_controller(v)
 
     -- Current attack target entity, if any.
     attack_target = nil,
-
-    -- Last time we fired our gun.  This is used to limit the
-    -- rate of fire.
-    last_gun_fire_tick = 0,
-
-    -- Last time we ran an enemy search.  This limits the frequency
-    -- of searches, to limit the impact on game FPS.
-    last_target_search_tick = 0,
   };
 end;
 
