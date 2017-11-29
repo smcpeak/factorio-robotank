@@ -58,9 +58,6 @@ local function new_vehicle_controller(v)
 
     -- Vehicle's position dueing the previous tick.
     previous_position = v.position,
-
-    -- Current attack target entity, if any.
-    attack_target = nil,
   };
 end;
 
