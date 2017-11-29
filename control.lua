@@ -225,17 +225,48 @@ local function subtract_vec(v1, v2)
   return { x = v1.x - v2.x, y = v1.y - v2.y };
 end;
 
-local function unit_vector_to_orientation(v)
-  -- Angle South of East, in radians.
-  local angle = math.atan2(v.y, v.x);
+-- Given a Factorio "orientation", normalize it to [0,1).
+local function normalize_orientation(o)
+  while o < 0 do
+    o = o + 1;
+  end;
+  while o >= 1 do
+    o = o - 1;
+  end;
+  return o;
+end;
 
-  -- Convert to orientation in [-0.25, 0.75].
-  local orientation = angle / (2 * math.pi) + 0.25;
+-- Normalize radians to [-pi,pi).
+local function normalize_radians(r)
+  while r < -math.pi do
+    r = r + (math.pi * 2);
+  end;
+  while r >= math.pi do
+    r = r - (math.pi * 2);
+  end;
+  return r;
+end;
+
+local function vector_to_angle(v)
+  -- Angle South of East, in radians.
+  return math.atan2(v.y, v.x);
+end;
+
+local function orientation_to_radians(orientation)
+  return (orientation - 0.25) * 2 * math.pi;
+end;
+
+-- Convert to radians in [-pi,pi] to orientation in [-0.25, 0.75].
+local function radians_to_orientation(radians)
+  return radians / (2 * math.pi) + 0.25;
+end;
+
+local function vector_to_orientation(v)
+  local angle = vector_to_angle(v);
+  local orientation = radians_to_orientation(angle);
 
   -- Raise to [0,1].
-  if (orientation < 0) then
-    orientation = orientation + 1;
-  end;
+  orientation = normalize_orientation(orientation);
 
   return orientation;
 end;
@@ -379,6 +410,135 @@ local function update_robotanks(tick)
   end;
 end;
 
+-- Predict how long it will take for particles at p1 and p2,
+-- moving with velocities v1 and v2, to come within 'dist'
+-- units of each other ("contact").  Also return an angle,
+-- in radians, from p2 at the moment of contact to the contact
+-- point.  If they will not come that close, ticks is nil.
+-- If they are already within 'dist', ticks is 0.  In either of
+-- those cases, the returned angle is the current p2 to p1 angle.
+local function predict_approach(p1, v1, p2, v2, dist)
+  -- Move p1 to the origin.
+  p2 = subtract_vec(p2, p1);
+  if (mag_sq(p2) < 0.000001) then
+    -- Already on top of each other.
+    return 0, 0;
+  end;
+
+  -- Current angle from p2 to p1.
+  local angle_p2_to_p1 = math.atan2(-p2.y, -p2.x);
+
+  if (mag_sq(p2) < dist*dist) then
+    -- Already in contact.
+    return 0, angle_p2_to_p1;
+  end;
+
+  -- Compute movement of p2 relative to p1.
+  v2 = subtract_vec(v2, v1);
+
+  if (mag_sq(v2) < 0.000001) then
+    -- Not moving relative to each other, will not be in contact.
+    return nil, angle_p2_to_p1;
+  end;
+
+  -- Rotate the system so the velocity (v) is pointing East (+x),
+  -- obtaining a new point (p) that is the rotated location of p2.
+  local v2angle = vector_to_angle(v2);
+  local v = rotate_vec(v2, -v2angle);
+  local p = rotate_vec(p2, -v2angle);
+
+  if (p.x > 0) then
+    -- Moving in same direction as displacement, so the
+    -- separation distance will only increase.
+    return nil, angle_p2_to_p1;
+  end;
+
+  -- Compute the vertical separation at contact.  This is the sine
+  -- of the contact angle from p1 to p2, in the rotated frame.
+  local s = math.abs(p.y);
+  if (s > dist) then
+    -- No contact.
+    return nil, angle_p2_to_p1;
+  end;
+
+  -- Call the rotated p1p2 contact angle theta.  It is always
+  -- in the second or third quadrant, since p2 is approaching
+  -- from the left, hence the angle complement with pi.
+  local theta = math.pi - math.asin(s / dist);
+  if (p.y < 0) then
+    theta = -theta;
+  end;
+
+  -- From that, compute the horizontal separation at contact,
+  -- which is negative due to theta's quadrant.
+  local c = math.cos(theta) * dist;
+
+  -- Distance from p2 to contact point is current horizontal
+  -- separation minus that at contact.
+  local distance_to_contact = -p.x + c;
+
+  -- Divide by speed to get ticks.
+  local ticks = distance_to_contact / v.x;
+
+  -- Finally, the p2 to p1 contact angle is 180 opposite to p1p2,
+  -- then we have to undo the earlier rotation.
+  local angle = normalize_radians(theta + math.pi + v2angle);
+
+  return ticks, angle;
+end;
+
+-- Return flags describing what is necessary for 'v' to avoid colliding
+-- with one of the 'vehicles'.
+local function collision_avoidance(tick, vehicles, v)
+  local cannot_turn = false;
+  local must_brake = false;
+  local cannot_accelerate = false;
+
+  for _, controller in pairs(vehicles) do
+    if (controller.vehicle ~= v) then
+      -- Are we too close to turn?
+      if (mag_sq(subtract_vec(controller.vehicle.position, v.position)) < 11.5) then
+        cannot_turn = true;
+      end;
+
+      -- At current velocities, how long (how many ticks) until we come
+      -- within 4 units of the other unit, and in which direction would
+      -- contact occur?
+      local approach_ticks, approach_angle = predict_approach(
+        controller.vehicle.position,
+        vehicle_velocity(controller.vehicle),
+        v.position,
+        vehicle_velocity(v),
+        4);
+      local approach_orientation = radians_to_orientation(approach_angle);
+      local relative_orientation = normalize_orientation(approach_orientation - v.orientation);
+      if (approach_ticks ~= nil and (relative_orientation <= 0.25 or relative_orientation >= 0.75)) then
+        -- Contact would occur in front, so if it is imminent, then we
+        -- need to slow down.
+        if (approach_ticks < v.speed * 1000) then
+          must_brake = true;
+        elseif (approach_ticks < (v.speed + 0.02) * 2000) then     -- speed+0.02: Presumed effect of acceleration.
+          cannot_accelerate = true;
+        end;
+      end;
+
+      --[[
+      if (tick % 30 == 0) then
+        log("approach_ticks=" .. serpent.line(approach_ticks) ..
+            " approach_angle=" .. serpent.line(approach_angle) ..
+            " approach_orientation=" .. serpent.line(approach_orientation) ..
+            " relative_orientation=" .. serpent.line(relative_orientation) ..
+            " speed=" .. v.speed ..
+            " must_brake=" .. serpent.line(must_brake) ..
+            " cannot_accelerate=" .. serpent.line(cannot_accelerate));
+      end;
+      --]]
+    end;
+  end;
+
+  return cannot_turn, must_brake, cannot_accelerate;
+end;
+
 local function drive_vehicles(tick_num)
   for force, vehicles in pairs(force_to_vehicles) do
     local player_vehicle = find_player_vehicle(vehicles);
@@ -452,7 +612,7 @@ local function drive_vehicles(tick_num)
 
           else
             -- Compute orientation in [0,1] that will reduce displacement.
-            local desired_orientation = unit_vector_to_orientation(normalize_vec(projected_straight_disp));
+            local desired_orientation = vector_to_orientation(projected_straight_disp);
 
             -- Difference with current orientation.
             local diff_orient = v.orientation - desired_orientation;
@@ -496,15 +656,40 @@ local function drive_vehicles(tick_num)
             end;
           end;
 
+          -- Having decided what we want to do, restrict it in order to
+          -- avoid collisions.
+          local cannot_turn, must_brake, cannot_accelerate = collision_avoidance(tick_num, vehicles, v);
+          --[[
+          if (tick_num % 60 == 0) then
+            log("cannot_turn=" .. serpent.line(cannot_turn) ..
+                " must_brake=" .. serpent.line(must_brake) ..
+                " cannot_accelerate=" .. serpent.line(cannot_accelerate));
+          end;
+          --]]
+          if (must_brake) then
+            pedal = defines.riding.acceleration.braking;
+            pedal_string = "braking";
+          elseif (cannot_accelerate and pedal == defines.riding.acceleration.accelerating) then
+            pedal = defines.riding.acceleration.nothing;
+            pedal_string = "nothing";
+          end;
+
+          if (cannot_turn) then
+            turn = defines.riding.direction.straight;
+            turn_string = "nothing";
+          end;
+
           -- Apply the desired controls to the vehicle.
           v.riding_state = {
             acceleration = pedal,
             direction = turn,
           };
 
+          --[[
           if (tick_num % 60 == 0) then
             log("pedal=" .. pedal_string .. ", turn=" .. turn_string);
           end;
+          --]]
         end;
       end;
     end;
@@ -569,6 +754,203 @@ script.on_event({defines.events.on_player_mined_entity},
     end;
   end
 );
+
+
+----------------------------- Test code ------------------------------
+
+-- Return true if two floating-point values (or nil) are almost equal.
+local function almost_equal(x, y)
+  if (x == nil and y == nil) then
+    return true;
+  elseif (x == nil or y == nil) then
+    return false;
+  else
+    return math.abs(x-y) < 1e-10;
+  end;
+end;
+
+-- Test a single input to 'predict_approach'.
+local function test_one_predict_approach(p1, v1, p2, v2, dist,
+    expect_ticks, expect_angle)
+  local actual_ticks, actual_angle = predict_approach(p1, v1, p2, v2, dist);
+  if (not (almost_equal(actual_ticks, expect_ticks) and
+           almost_equal(actual_angle, expect_angle))) then
+    print("predict approach failed:");
+    print("  p1: " .. serpent.line(p1));
+    print("  v1: " .. serpent.line(v1));
+    print("  p2: " .. serpent.line(p2));
+    print("  v2: " .. serpent.line(v2));
+    print("  dist: " .. dist);
+    print("  expect_ticks: " .. serpent.line(expect_ticks));
+    print("  actual_ticks: " .. serpent.line(actual_ticks));
+    print("  expect_angle: " .. serpent.line(expect_angle));
+    print("  actual_angle: " .. serpent.line(actual_angle));
+    error("failed test");
+  end;
+end;
+
+-- Test an input to 'predict_approach' and a couple simple variations.
+local function test_multi_predict_approach(p1, v1, p2, v2, dist,
+    expect_ticks, expect_angle)
+  -- Original test.
+  test_one_predict_approach(p1, v1, p2, v2, dist, expect_ticks, expect_angle);
+
+  -- Offsetting the positions by the same amount should not affect anything.
+  local ofs = {x=1, y=1};
+  test_one_predict_approach(add_vec(p1,ofs), v1, add_vec(p2,ofs), v2, dist,
+    expect_ticks, expect_angle);
+
+  -- Similarly for adding the same value to both velocities.
+  test_one_predict_approach(p1, add_vec(v1,ofs), p2, add_vec(v2,ofs), dist,
+    expect_ticks, expect_angle);
+
+  -- And for rotating the entire system, except that the angle changes
+  -- unless the points are coincident.
+  local angle = math.pi / 2;
+  local expect_angle_factor = (equal_vec(p1, p2) and 0 or 1);
+  test_one_predict_approach(
+    rotate_vec(p1, angle),
+    rotate_vec(v1, angle),
+    rotate_vec(p2, angle),
+    rotate_vec(v2, angle),
+    dist, expect_ticks, expect_angle + angle * expect_angle_factor);
+  angle = math.pi / 4;
+  test_one_predict_approach(
+    rotate_vec(p1, angle),
+    rotate_vec(v1, angle),
+    rotate_vec(p2, angle),
+    rotate_vec(v2, angle),
+    dist, expect_ticks, expect_angle + angle * expect_angle_factor);
+
+end;
+
+local function test_predict_approach()
+  local v0 = {x=0, y=0};
+
+  -- On top of each other: contact already, no useful angle.
+  test_multi_predict_approach(
+    v0,
+    v0,
+    v0,
+    v0,
+    1,
+    0,
+    0);
+
+  -- On top but with relative velocity: same thing.
+  test_multi_predict_approach(
+    v0,
+    v0,
+    v0,
+    {x=1,y=1},
+    1,
+    0,
+    0);
+
+  -- Within contact distance but with non-trivial angle.
+  test_multi_predict_approach(
+    {x=1, y=1},
+    v0,
+    v0,
+    v0,
+    2,
+    0,
+    math.pi / 4);
+
+  -- Approaching along a tangent.
+  test_multi_predict_approach(
+    v0,
+    v0,
+    {x=-4, y=1},
+    {x=1, y=0},
+    1,
+    4,
+    - math.pi / 2);
+
+  -- Non-degenrate intersection, contact angle 45 degrees.
+  test_multi_predict_approach(
+    v0,
+    v0,
+    {x=-4, y = 1 / math.sqrt(2)},
+    {x=1, y=0},
+    1,
+    4 - 1 / math.sqrt(2),
+    - math.pi / 4);
+
+  -- Same except v1 in opposite direction so no intersection.
+  test_multi_predict_approach(
+    v0,
+    v0,
+    {x=-4, y = 1 / math.sqrt(2)},
+    {x=-1, y=0},
+    1,
+    nil,
+    math.atan2(-1 / math.sqrt(2), 4));
+
+  -- Intersection case but mirrored horizontally.
+  test_multi_predict_approach(
+    v0,
+    v0,
+    {x=4, y = 1 / math.sqrt(2)},
+    {x=-1, y=0},
+    1,
+    4 - 1 / math.sqrt(2),
+    - 3 * math.pi / 4);
+
+  -- p1 is too high so it misses by a fair bit.
+  test_multi_predict_approach(
+    v0,
+    v0,
+    {x=-4, y = 2},
+    {x=1, y=0},
+    1,
+    nil,
+    math.atan2(-2, 4));
+
+  -- Non-degenrate intersection but p2 has negative y.
+  test_multi_predict_approach(
+    v0,
+    v0,
+    {x=-4, y = - 1 / math.sqrt(2)},
+    {x=1, y=0},
+    1,
+    4 - 1 / math.sqrt(2),
+    math.pi / 4);
+
+  print("test_predict_approach passed");
+end;
+
+
+-- Unit tests, meant to be run via Lua command line:
+--
+--  $ LUA_PATH='/d/SteamLibrary/steamapps/common/Factorio/data/core/lualib/?.lua;/d/dist/factorio/?.lua;?.lua' lua -l stubs -l control -e 'unit_tests()'
+--
+-- /d/dist/factorio is where I put serpent.lua.
+function unit_tests()
+  print("Running unit tests for VehicleLeash control.lua ...");
+  test_predict_approach();
+  print("VehicleLeash unit tests passed");
+
+end;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
