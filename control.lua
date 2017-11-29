@@ -148,9 +148,14 @@ end;
 local function find_player_vehicle(vehicles)
   for unit_number, controller in pairs(vehicles) do
     local v = controller.vehicle;
+    -- It must be a vehicle that the player is riding in.
     if ((v.passenger ~= nil) and (v.passenger.type == "player")) then
-      --log("Player vehicle is unit " .. v.unit_number);
-      return v;
+      -- And it must have the leash controller item in its trunk.
+      local inv = v.get_inventory(defines.inventory.car_trunk);
+      if (inv and inv.get_item_count("vehicle-leash-item") > 0) then
+        --log("Player vehicle is unit " .. v.unit_number);
+        return v;
+      end;
     end;
   end;
 end;
@@ -364,11 +369,13 @@ local function drive_vehicles(tick_num)
     if (player_vehicle == nil) then
       --log("Force " .. force .. " does not have a player vehicle.");
       for unit_number, controller in ordered_pairs(vehicles) do
-        -- Don't let the vehicles run away when I jump out.
-        controller.vehicle.riding_state = {
-          acceleration = defines.riding.acceleration.nothing;
-          direction = defines.riding.direction.straight;
-        };
+        if (controller.vehicle.name == "robotank-entity") then
+          -- Don't let the vehicles run away when I jump out.
+          controller.vehicle.riding_state = {
+            acceleration = defines.riding.acceleration.nothing;
+            direction = defines.riding.direction.straight;
+          };
+        end;
       end;
     else
       local player_velocity = vehicle_velocity(player_vehicle);
@@ -390,7 +397,7 @@ local function drive_vehicles(tick_num)
 
       for unit_number, controller in ordered_pairs(vehicles) do
         local v = controller.vehicle;
-        if (v ~= player_vehicle) then
+        if (v ~= player_vehicle and v.name == "robotank-entity") then
           -- Calculate the displacement between where we are now and where
           -- we want to be in formation in front of the player's vehicle.
           local full_lateral = multiply_vec(lateral_vec, lateral_fact);
