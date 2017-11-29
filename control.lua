@@ -278,6 +278,37 @@ local function get_bullet_ammo(inv)
   end;
 end;
 
+local function maybe_load_robotank_turret_ammo(controller)
+  -- See if the turret needs another ammo magazine.
+  local turret_inv = controller.turret.get_inventory(defines.inventory.turret_ammo);
+  if (not turret_inv) then
+    log("Failed to get turret inventory!");
+    return;
+  end;
+  if (turret_inv.is_empty()) then
+    -- Check the vehicle's trunk for ammo.
+    local car_inv = controller.vehicle.get_inventory(defines.inventory.car_trunk);
+    if (car_inv) then
+      local ammo_type = get_bullet_ammo(car_inv);
+      if (ammo_type) then
+        local got = car_inv.remove{name=ammo_type, count=10};
+        if (got < 1) then
+          log("Failed to remove ammo from trunk!");
+        else
+          local put = turret_inv.insert{name=ammo_type, count=got};
+          if (put < 1) then
+            log("Failed to add ammo to turret!");
+          else
+            log("Loaded " .. put .. " ammo magazines of type: " .. ammo_type);
+          end;
+        end;
+      end;
+    else
+      log("Failed to get car inventory!");
+    end;
+  end;
+end;
+
 -- Do per-tick updates of robotanks.
 local function update_robotanks(tick)
   for force, vehicles in pairs(force_to_vehicles) do
@@ -310,34 +341,7 @@ local function update_robotanks(tick)
             end;
           end;
 
-          -- See if the turret needs another ammo magazine.
-          local turret_inv = controller.turret.get_inventory(defines.inventory.turret_ammo);
-          if (not turret_inv) then
-            log("Failed to get turret inventory!");
-            break;
-          end;
-          if (turret_inv.is_empty()) then
-            -- Check the vehicle's trunk for ammo.
-            local car_inv = controller.vehicle.get_inventory(defines.inventory.car_trunk);
-            if (car_inv) then
-              local ammo_type = get_bullet_ammo(car_inv);
-              if (ammo_type) then
-                local got = car_inv.remove{name=ammo_type, count=10};
-                if (got < 1) then
-                  log("Failed to remove ammo from trunk!");
-                else
-                  local put = turret_inv.insert{name=ammo_type, count=got};
-                  if (put < 1) then
-                    log("Failed to add ammo to turret!");
-                  else
-                    log("Loaded " .. put .. " ammo magazines of type: " .. ammo_type);
-                  end;
-                end;
-              end;
-            else
-              log("Failed to get car inventory!");
-            end;
-          end;
+          maybe_load_robotank_turret_ammo(controller);
         end;
       end;
     end;
