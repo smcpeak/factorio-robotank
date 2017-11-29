@@ -3,6 +3,10 @@
 
 require "util"               -- table.deepcopy
 
+local function equal_vec(v1, v2)
+  return v1.x == v2.x and v1.y == v2.y;
+end;
+
 -- Given something that could be a string or an object with
 -- a name, yield it as a string.
 local function string_or_name_of(e)
@@ -56,12 +60,15 @@ local function new_vehicle_controller(v)
     -- Associated turret entity that does the shooting.
     turret = nil,
 
-    -- Vehicle's position dueing the previous tick.
+    -- Vehicle's position during the previous tick.
     previous_position = v.position,
+
+    -- Do not activate automatic driving until this tick.
+    automatic_drive_min_tick = 0,
   };
 end;
 
--- Add a vehicle to our table.
+-- Add a vehicle to our table and return its controller.
 local function add_vehicle(v)
   local force_name = string_or_name_of(v.force);
   force_to_vehicles[force_name] = force_to_vehicles[force_name] or {}
@@ -70,10 +77,22 @@ local function add_vehicle(v)
 
   if (v.name == "robotank-entity") then
     -- Is there already an associated turret here?
-    controller.turret =
-      v.surface.find_entity("robotank-turret-entity", controller.vehicle.position);
-    if (controller.turret) then
-      log("Found existing turret.");
+    local p = controller.vehicle.position;
+    local candidates = v.surface.find_entities_filtered{
+      area = {{p.x-0.5, p.y-0.5}, {p.x+0.5, p.y+0.5}},
+      --position = p,
+      name = "robotank-turret-entity"
+    };
+    if (#candidates > 0) then
+      controller.turret = candidates[1];
+      log("Found existing turret with unit number " .. controller.turret.unit_number .. ".");
+
+      -- Strangely, I have a saved game where if I try to find the turret
+      -- by exact position, it fails, yet the reported position afterward
+      -- is identical.  So I find using a small area instead.
+      --log("Vehicle position: " .. serpent.line(p));
+      --log("Turret position: " .. serpent.line(controller.turret.position));
+      --log("Positions are equal: " .. (equal_vec(p, controller.turret.position) and "yes" or "no"));
     else
       controller.turret = v.surface.create_entity{
         name = "robotank-turret-entity",
@@ -91,6 +110,8 @@ local function add_vehicle(v)
       " with name " .. v.name ..
       " at (" .. v.position.x .. "," .. v.position.y .. ")" ..
       " added to force " .. force_name);
+
+  return controller;
 end;
 
 -- Find the controller object associated with the given vehicle, if any.
@@ -259,10 +280,6 @@ local function rotate_vec(v, radians)
   };
 end;
 
-local function equal_vec(v1, v2)
-  return v1.x == v2.x and v1.y == v2.y;
-end;
-
 -- Get the name of some bullet ammo in the given inventory,
 -- or nil if there is none.
 local function get_bullet_ammo(inv)
@@ -396,7 +413,9 @@ local function drive_vehicles(tick_num)
 
       for unit_number, controller in ordered_pairs(vehicles) do
         local v = controller.vehicle;
-        if (v ~= player_vehicle and v.name == "robotank-entity") then
+        if (v ~= player_vehicle and
+            v.name == "robotank-entity" and
+            controller.automatic_drive_min_tick <= tick_num) then
           -- Calculate the displacement between where we are now and where
           -- we want to be in formation in front of the player's vehicle.
           local full_lateral = multiply_vec(lateral_vec, lateral_fact);
@@ -513,7 +532,12 @@ script.on_event({defines.events.on_built_entity, defines.events.on_robot_built_e
     local ent = e.created_entity;
     --log("VehicleLeash: saw built event: " .. serpent.block(entity_info(ent)));
     if (ent.type == "car") then
-      add_vehicle(ent);
+      local controller = add_vehicle(ent);
+
+      -- When a new robotank is placed, delay its automatic drive for 5s.
+      -- This gives it time to get loaded with fuel and ammo by inserters
+      -- before it drives away from the placement spot.
+      controller.automatic_drive_min_tick = e.tick + 120;
     end;
   end
 );
