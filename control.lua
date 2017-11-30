@@ -45,6 +45,10 @@ local function new_vehicle_controller(v)
     -- tick passes, the vehicle will first brake until it is stopped,
     -- then clear the field and resume normal driving.
     reversing_until = nil,
+
+    -- Array of other vehicles (on the same force) that are near
+    -- enough to this one to be relevant for collision avoidance.
+    nearby_vehicles = {},
   };
 end;
 
@@ -375,85 +379,102 @@ local function predict_approach(p1, v1, p2, v2, dist)
   return ticks, angle;
 end;
 
--- Return flags describing what is necessary for 'v' to avoid colliding
--- with one of the 'vehicles'.
-local function collision_avoidance(tick, vehicles, v)
+-- Return flags describing what is necessary for 'controller.vehicle'
+-- to avoid colliding with one of the 'vehicles'.
+local function collision_avoidance(tick, vehicles, controller)
   local cannot_turn = false;
   local must_brake = false;
   local cannot_accelerate = false;
 
-  for _, controller in pairs(vehicles) do
-    if (controller.vehicle ~= v) then
-      -- Are we too close to turn?
-      if (mag_sq(subtract_vec(controller.vehicle.position, v.position)) < 11.5) then
-        cannot_turn = true;
-      end;
+  local v = controller.vehicle;
 
-      -- At current velocities, how long (how many ticks) until we come
-      -- within 4 units of the other unit, and in which direction would
-      -- contact occur?
-      local approach_ticks, approach_angle = predict_approach(
-        controller.vehicle.position,
-        vehicle_velocity(controller.vehicle),
-        v.position,
-        vehicle_velocity(v),
-        4);
-      local approach_orientation = radians_to_orientation(approach_angle);
-      local relative_orientation = normalize_orientation(approach_orientation - v.orientation);
-      if (approach_ticks ~= nil and (relative_orientation <= 0.25 or relative_orientation >= 0.75)) then
-        -- Contact would occur in front, so if it is imminent, then we
-        -- need to slow down.
-        if (approach_ticks < v.speed * 1000) then
-          must_brake = true;
-        elseif (approach_ticks < (v.speed + 0.02) * 2000) then     -- speed+0.02: Presumed effect of acceleration.
-          cannot_accelerate = true;
+  -- Periodically refresh the list of other vehicles near enough
+  -- to this one to be relevant.
+  if (tick % 60 == 0) then
+    controller.nearby_vehicles = {};
+    for _, other in pairs(vehicles) do
+      if (other.vehicle ~= v) then
+        -- Maximum distance is a baseline of 10 plus additional margin
+        -- for fast moving vehicles.
+        local threshold = 10 + math.abs(v.speed) * 10 + math.abs(other.vehicle.speed) * 10;
+        if (mag_sq(subtract_vec(other.vehicle.position, v.position)) < threshold * threshold) then
+          table.insert(controller.nearby_vehicles, other);
         end;
       end;
-
-      --[[
-      if (tick % 30 == 0) then
-        log("approach_ticks=" .. serpent.line(approach_ticks) ..
-            " approach_angle=" .. serpent.line(approach_angle) ..
-            " approach_orientation=" .. serpent.line(approach_orientation) ..
-            " relative_orientation=" .. serpent.line(relative_orientation) ..
-            " speed=" .. v.speed ..
-            " must_brake=" .. serpent.line(must_brake) ..
-            " cannot_accelerate=" .. serpent.line(cannot_accelerate));
-      end;
-      --]]
     end;
+  end;
+
+  -- Scan nearby vehicles for collision potential.
+  for _, other in ipairs(controller.nearby_vehicles) do
+    -- Are we too close to turn?
+    if (mag_sq(subtract_vec(other.vehicle.position, v.position)) < 11.5) then
+      cannot_turn = true;
+    end;
+
+    -- At current velocities, how long (how many ticks) until we come
+    -- within 4 units of the other unit, and in which direction would
+    -- contact occur?
+    local approach_ticks, approach_angle = predict_approach(
+      other.vehicle.position,
+      vehicle_velocity(other.vehicle),
+      v.position,
+      vehicle_velocity(v),
+      4);
+    local approach_orientation = radians_to_orientation(approach_angle);
+    local relative_orientation = normalize_orientation(approach_orientation - v.orientation);
+    if (approach_ticks ~= nil and (relative_orientation <= 0.25 or relative_orientation >= 0.75)) then
+      -- Contact would occur in front, so if it is imminent, then we
+      -- need to slow down.
+      if (approach_ticks < v.speed * 1000) then
+        must_brake = true;
+      elseif (approach_ticks < (v.speed + 0.02) * 2000) then     -- speed+0.02: Presumed effect of acceleration.
+        cannot_accelerate = true;
+      end;
+    end;
+
+    --[[
+    if (tick % 30 == 0) then
+      log("approach_ticks=" .. serpent.line(approach_ticks) ..
+          " approach_angle=" .. serpent.line(approach_angle) ..
+          " approach_orientation=" .. serpent.line(approach_orientation) ..
+          " relative_orientation=" .. serpent.line(relative_orientation) ..
+          " speed=" .. v.speed ..
+          " must_brake=" .. serpent.line(must_brake) ..
+          " cannot_accelerate=" .. serpent.line(cannot_accelerate));
+    end;
+    --]]
   end;
 
   return cannot_turn, must_brake, cannot_accelerate;
 end;
 
 -- Is it safe for vehicle 'v' to reverse out of a stuck position?
-local function can_reverse(tick, vehicles, v)
-  for _, controller in pairs(vehicles) do
-    if (controller.vehicle ~= v) then
-      -- With this vehicle reversing at a nominal velocity, and the
-      -- other vehicle at its current velocity, how long until we come
-      -- close, and in which direction would contact occur?
-      local approach_ticks, approach_angle = predict_approach(
-        controller.vehicle.position,
-        vehicle_velocity(controller.vehicle),
-        v.position,
-        vehicle_velocity_if_speed(v, -0.1),
-        4);
-      local approach_orientation = radians_to_orientation(approach_angle);
-      local relative_orientation = normalize_orientation(approach_orientation - v.orientation);
-      if (approach_ticks ~= nil and (0.25 <= relative_orientation and relative_orientation <= 0.75)) then
-        -- Contact would occur in back; is it soon?
-        if (approach_ticks < 100) then
-          if (tick % 60 == 0) then
-            log("Vehicle " .. v.unit_number ..
-                " cannot reverse because it would hit vehicle " ..
-                controller.vehicle.unit_number ..
-                " at orientation " .. relative_orientation ..
-                " in " .. approach_ticks .. " ticks.");
-          end;
-          return false;
+local function can_reverse(tick, vehicles, controller)
+  local v = controller.vehicle;
+
+  for _, other in ipairs(controller.nearby_vehicles) do
+    -- With this vehicle reversing at a nominal velocity, and the
+    -- other vehicle at its current velocity, how long until we come
+    -- close, and in which direction would contact occur?
+    local approach_ticks, approach_angle = predict_approach(
+      other.vehicle.position,
+      vehicle_velocity(other.vehicle),
+      v.position,
+      vehicle_velocity_if_speed(v, -0.1),
+      4);
+    local approach_orientation = radians_to_orientation(approach_angle);
+    local relative_orientation = normalize_orientation(approach_orientation - v.orientation);
+    if (approach_ticks ~= nil and (0.25 <= relative_orientation and relative_orientation <= 0.75)) then
+      -- Contact would occur in back; is it soon?
+      if (approach_ticks < 100) then
+        if (tick % 60 == 0) then
+          log("Vehicle " .. v.unit_number ..
+              " cannot reverse because it would hit vehicle " ..
+              other.vehicle.unit_number ..
+              " at orientation " .. relative_orientation ..
+              " in " .. approach_ticks .. " ticks.");
         end;
+        return false;
       end;
     end;
   end;
@@ -604,7 +625,8 @@ local function drive_vehicles(tick_num)
 
           -- Having decided what we would want to do in the absence of
           -- obstacles, restrict behavior in order to avoid collisions.
-          local cannot_turn, must_brake, cannot_accelerate = collision_avoidance(tick_num, vehicles, v);
+          local cannot_turn, must_brake, cannot_accelerate =
+            collision_avoidance(tick_num, vehicles, controller);
 
           -- Are we reversing out of a stuck position?  That overrides the
           -- decisions made above.
@@ -652,7 +674,7 @@ local function drive_vehicles(tick_num)
               -- Have been stuck for a while.  Periodically check if we
               -- can safely reverse out of here.
               if (tick_num % 60 == 0) then
-                if (can_reverse(tick_num, vehicles, v)) then
+                if (can_reverse(tick_num, vehicles, controller)) then
                   log("Vehicle " .. unit_number .. " is stuck, trying to reverse out of it.");
                   controller.stuck_since = nil;
                   controller.reversing_until = tick_num + 60;
@@ -722,12 +744,11 @@ script.on_event(defines.events.on_tick, function(e)
 
   update_robotanks(e.tick)
 
-  -- For now at least, we recalculate driving controls on every tick.  I
-  -- would like to do this less often, but I need to first measure the
-  -- performance impact (to see if it matters) and also do some experiments
-  -- to see what the impact is on the tank behavior.  But I don't want to
-  -- invest in that until I'm happy with how they behave when I recalculate
-  -- on every tick.
+  -- Recalculate driving controls on every tick.  I experimented with
+  -- doing this less frequently, but even when it is done on every other
+  -- tick, there is a slight but noticeable sluggishness in the response
+  -- of the robotanks when I turn left and right.  So, I'll do the
+  -- overall routine on every tick, but perhaps do some parts less often.
   drive_vehicles(e.tick);
 end);
 
