@@ -65,6 +65,12 @@ robotank_entity.minable = {
   result = "robotank-item",
 };
 
+-- Make it a little blue so it is visually distinct from the
+-- normal tank.
+for _, layer in pairs(robotank_entity.animation.layers) do
+  layer.tint = {r=0.8, g=0.8, b=1, a=1};
+end;
+
 -- World entity for the robotank turret.  Conceptually, I want the tank
 -- to attack with its own, normal machine gun.  But it is somewhat
 -- difficult to replicate all of the attack behavior, and seems to be
