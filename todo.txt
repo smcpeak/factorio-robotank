@@ -1,6 +1,5 @@
 TODO list for RoboTank mod
 
-- Improve item names and descriptions
 - Remove defunct gunfire-entity
 - Use item.prototype in ammo loading code
 - Optimize collision detection to only run every other frame?
