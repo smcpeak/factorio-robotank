@@ -793,12 +793,8 @@ local function test_predict_approach()
 end;
 
 
--- Unit tests, meant to be run at bash command line using the
--- stand-alone Lua interpreter:
---
---  $ LUA_PATH='/d/SteamLibrary/steamapps/common/Factorio/data/core/lualib/?.lua;/d/dist/factorio/?.lua;?.lua' lua -l stubs -l control -e 'unit_tests()'
---
--- /d/dist/factorio is where I put serpent.lua.
+-- Unit tests, meant to be run using the stand-alone Lua interpreter.
+-- See unit-tests.sh.
 function unit_tests()
   print("Running unit tests for VehicleLeash control.lua ...");
   test_predict_approach();
