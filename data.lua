@@ -65,7 +65,11 @@ robotank_entity.minable = {
   result = "robotank-item",
 };
 
--- World entity for the robotank turret.
+-- World entity for the robotank turret.  Conceptually, I want the tank
+-- to attack with its own, normal machine gun.  But it is somewhat
+-- difficult to replicate all of the attack behavior, and seems to be
+-- impossible to replicate the enemy aggro behavior.  So I attach a turret
+-- entity to the tank to perform those functions.
 local robotank_turret_entity = table.deepcopy(data.raw["ammo-turret"]["gun-turret"]);
 robotank_turret_entity.name = "robotank-turret-entity";
 
@@ -77,18 +81,37 @@ robotank_turret_entity.collision_mask = {};
 robotank_turret_entity.collision_box = {{0,0}, {0,0}};
 
 -- Do not allow the turret to be individually selected.  This also
--- cause its health bar to not appear.
+-- causes its health bar to not appear.
 robotank_turret_entity.selection_box = {{0,0}, {0,0}};
 
 -- This is probably irrelevant with no selection box, but just in case,
--- make sure this cannot be mined.
+-- make sure the turret cannot be mined.  (It gets destroyed automatically
+-- when the tank is destroyed or mined.)
 robotank_turret_entity.minable = nil;
+
+-- Copy the damage characteristics of the tank machine gun to
+-- the robotank turret.
+local tank_machine_gun = data.raw.gun["tank-machine-gun"];
+robotank_turret_entity.attack_parameters.cooldown        = tank_machine_gun.attack_parameters.cooldown;
+robotank_turret_entity.attack_parameters.range           = tank_machine_gun.attack_parameters.range;
+robotank_turret_entity.attack_parameters.damage_modifier = tank_machine_gun.attack_parameters.damage_modifier;
+
+-- Also match its resistances to those of the tank, since in most
+-- cases it is the turret that will be taking damage from enemies.
+robotank_turret_entity.resistances = table.deepcopy(robotank_entity.resistances);
+
+-- Raise the turret's max health to ensure it won't be one-shot by
+-- anything, and also ensure its max health is what my script
+-- expects in order to properly calculate damage taken to transfer
+-- it to the tank.
+robotank_turret_entity.max_health = 1000;
+
 
 robotank_turret_entity.flags = {
   "player-creation",        -- Supposedly this factors into enemy aggro.
   "placeable-off-grid",     -- Allow initial placement to be right where I put it.
   "not-on-map",             -- Do not draw the turret on the minimap.
-  "not-repairable",         -- Bots cannot repair the turret.
+  "not-repairable",         -- Bots cannot repair the turret (any damage is moved to the tank).
 };
 
 -- Push these new things into the main data table.

@@ -312,13 +312,16 @@ local function rotate_vec(v, radians)
 end;
 
 -- Get the name of some bullet ammo in the given inventory,
--- or nil if there is none.
+-- or nil if there is none.  If there are multiple kinds of
+-- bullet ammo available, this gets one of them arbitrarily.
+-- I expect users to only put their preferred kind of ammo
+-- into the tank.
 local function get_bullet_ammo(inv)
   for name, count in pairs(inv.get_contents()) do
     local proto = game.item_prototypes[name];
     if (proto) then
-      --log("ammo type: " .. serpent.block(proto.get_ammo_type("turret")));
       if (proto.type == "ammo") then
+        -- I do not know what effect the argument "turret" has here.
         local ammo_type = proto.get_ammo_type("turret");
         if (ammo_type.category == "bullet") then
           return name;
@@ -330,6 +333,7 @@ local function get_bullet_ammo(inv)
   end;
 end;
 
+-- Try to keep the turret stocked up on ammo by taking it from the tank.
 local function maybe_load_robotank_turret_ammo(controller)
   -- See if the turret needs another ammo magazine.
   local turret_inv = controller.turret.get_inventory(defines.inventory.turret_ammo);
@@ -337,6 +341,11 @@ local function maybe_load_robotank_turret_ammo(controller)
     log("Failed to get turret inventory!");
     return;
   end;
+
+  -- For speed, I only look at the inventory if it is completely empty.
+  -- That means there is periodically a frame during which the turret
+  -- ammo is empty, so the turret stops firing and shows the no-ammo icon
+  -- briefly.
   if (turret_inv.is_empty()) then
     -- Check the vehicle's ammo slot.
     local car_inv = controller.vehicle.get_inventory(defines.inventory.car_ammo);
@@ -356,6 +365,7 @@ local function maybe_load_robotank_turret_ammo(controller)
     end;
 
     if (ammo_type) then
+      -- Move up to 10 ammo magazines into the turret.
       local got = car_inv.remove{name=ammo_type, count=10};
       if (got < 1) then
         log("Failed to remove ammo from trunk!");
@@ -378,9 +388,8 @@ local function update_robotanks(tick)
       if (controller.vehicle.name == "robotank-entity") then
         if (controller.turret ~= nil) then
           -- Transfer any damage sustained by the turret to the tank.
-          -- (This effectively uses the turret's resistances as those of
-          -- the tank.)
-          local damage = 400 - controller.turret.health;
+          -- The max health must match what is in data.lua.
+          local damage = 1000 - controller.turret.health;
           if (damage > 0) then
             if (controller.vehicle.health <= damage) then
               log("Fatal damage being transferred to robotank " .. unit_number .. ".");
@@ -391,11 +400,11 @@ local function update_robotanks(tick)
               break;
             else
               controller.vehicle.health = controller.vehicle.health - damage;
-              controller.turret.health = 400;
+              controller.turret.health = 1000;
             end;
           end;
 
-          -- Keep the turret with the tank.
+          -- Keep the turret centered on the tank.
           if (not equal_vec(controller.vehicle.position, controller.previous_position)) then
             controller.previous_position = table.deepcopy(controller.vehicle.position);
             if (not controller.turret.teleport(controller.vehicle.position)) then
