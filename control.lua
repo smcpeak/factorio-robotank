@@ -34,9 +34,6 @@ local function new_vehicle_controller(v)
     -- Vehicle's position during the previous tick.
     previous_position = v.position,
 
-    -- Do not activate automatic driving until this tick.
-    automatic_drive_min_tick = 0,
-
     -- When not nil, this records the tick number when the vehicle
     -- became stuck, prevented from going the way it wants to by
     -- some obstacles.  If we are stuck long enough, the vehicle
@@ -516,8 +513,7 @@ local function drive_vehicles(tick_num)
 
       for unit_number, controller in ordered_pairs(vehicles) do
         local v = controller.vehicle;
-        if (v.name == "robotank-entity" and
-            controller.automatic_drive_min_tick <= tick_num) then
+        if (v.name == "robotank-entity") then
           -- Calculate the displacement between where we are now and where
           -- we want to be in formation in front of the commander's vehicle.
           local full_lateral = multiply_vec(lateral_vec, lateral_fact);
@@ -742,12 +738,6 @@ script.on_event({defines.events.on_built_entity, defines.events.on_robot_built_e
     --log("VehicleLeash: saw built event: " .. serpent.block(entity_info(ent)));
     if (ent.type == "car") then
       local controller = add_vehicle(ent);
-
-      -- When a new robotank is placed, delay its automatic drive.
-      -- This gives it time to get loaded with fuel and ammo by inserters
-      -- before it drives away from the placement spot.
-      -- TODO: That doesn't really work, I should remove this.
-      controller.automatic_drive_min_tick = e.tick + 120;
     end;
   end
 );
