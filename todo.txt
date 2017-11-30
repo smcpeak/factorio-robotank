@@ -6,7 +6,6 @@ TODO list for RoboTank mod
   - Means saving some data persistently
 - Research robotanks and increases to the squad size limit
 - Put robotanks into idle mode for better performance when not active
-- Sensible recipes for the tanks and transmitter
 - Range limit on the transmitter
 - Detect and avoid running into the shore
 - Press key to arrange squad in a line?

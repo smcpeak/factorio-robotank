@@ -7,8 +7,10 @@ local transmitter_recipe = {
   name = "robotank-transmitter-recipe",
   enabled = true,
   ingredients = {
-    {"steel-plate", 5},
-    {"electronic-circuit", 2}
+    {"iron-plate", 6},            -- Six sides of a metal box.
+    {"processing-unit", 1},       -- Raise tech requirements.
+    {"copper-cable", 1},          -- Antenna.
+    {"battery", 1},               -- Power source.
   },
   result = "robotank-transmitter-item",
 };
@@ -30,8 +32,9 @@ local robotank_recipe = {
   name = "robotank-recipe",
   enabled = true,
   ingredients = {
-    {"iron-plate", 2},
-    {"electronic-circuit", 2}
+    {"tank", 1},                  -- Base vehicle.
+    {"processing-unit", 1},       -- Computer for driving and shooting algorithms.
+    {"construction-robot", 1},    -- The robot "driver", with its implicit radio receiver.
   },
   result = "robotank-item",
 };
