@@ -550,6 +550,18 @@ local function collision_avoidance(tick, vehicles, v)
   return cannot_turn, must_brake, cannot_accelerate;
 end;
 
+local riding_acceleration_string_table = {
+  [defines.riding.acceleration.accelerating] = "accelerating",
+  [defines.riding.acceleration.nothing] = "nothing",
+  [defines.riding.acceleration.braking] = "braking",
+  [defines.riding.acceleration.reversing] = "reversing",
+};
+local riding_direction_string_table = {
+  [defines.riding.direction.straight] = "straight",
+  [defines.riding.direction.left] = "left",
+  [defines.riding.direction.right] = "right",
+};
+
 local function drive_vehicles(tick_num)
   for force, vehicles in pairs(force_to_vehicles) do
     local commander_vehicle = find_commander_vehicle(vehicles);
@@ -597,9 +609,7 @@ local function drive_vehicles(tick_num)
 
           -- Goal here is to decide how to accelerate and turn.
           local pedal = defines.riding.acceleration.nothing;
-          local pedal_string = "nothing";
           local turn = defines.riding.direction.straight;
-          local turn_string = "straight";
 
           -- Current vehicle velocity.
           local cur_velocity = vehicle_velocity(v);
@@ -618,7 +628,6 @@ local function drive_vehicles(tick_num)
               -- Hack: commander is stopped, we should stop too.  (I would prefer that
               -- this behavior emerge naturally without making a special case.)
               pedal = defines.riding.acceleration.braking;
-              pedal_string = "braking";
             else
               -- Just coast straight.
             end;
@@ -638,20 +647,16 @@ local function drive_vehicles(tick_num)
             if (diff_orient > 0.1) then
               -- Coast and turn left.
               turn = defines.riding.direction.left;
-              turn_string = "left";
             elseif (diff_orient < -0.1) then
               -- Coast and turn right.
               turn = defines.riding.direction.right;
-              turn_string = "right";
             else
               -- Turn if we're not quite in line, then decide whether
               -- to accelerate.
               if (diff_orient > 0.01) then
                 turn = defines.riding.direction.left;
-                turn_string = "left";
               elseif (diff_orient < -0.01) then
                 turn = defines.riding.direction.right;
-                turn_string = "right";
               end;
 
               -- Desired speed as a function of projected distance to target.
@@ -661,10 +666,8 @@ local function drive_vehicles(tick_num)
 
               if (desired_speed > v.speed) then
                 pedal = defines.riding.acceleration.accelerating;
-                pedal_string = "accelerating";
               elseif (desired_speed < v.speed - 0.001) then
                 pedal = defines.riding.acceleration.braking;
-                pedal_string = "braking";
               end;
             end;
           end;
@@ -681,15 +684,12 @@ local function drive_vehicles(tick_num)
           --]]
           if (must_brake) then
             pedal = defines.riding.acceleration.braking;
-            pedal_string = "braking";
           elseif (cannot_accelerate and pedal == defines.riding.acceleration.accelerating) then
             pedal = defines.riding.acceleration.nothing;
-            pedal_string = "nothing";
           end;
 
           if (cannot_turn) then
             turn = defines.riding.direction.straight;
-            turn_string = "nothing";
           end;
 
           -- Apply the desired controls to the vehicle.
@@ -700,6 +700,8 @@ local function drive_vehicles(tick_num)
 
           --[[
           if (tick_num % 60 == 0) then
+            local pedal_string = riding_acceleration_string_table[pedal];
+            local turn_string = riding_direction_string_table[turn];
             log("pedal=" .. pedal_string .. ", turn=" .. turn_string);
           end;
           --]]
