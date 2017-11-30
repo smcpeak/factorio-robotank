@@ -106,13 +106,34 @@ robotank_turret_entity.resistances = table.deepcopy(robotank_entity.resistances)
 -- it to the tank.
 robotank_turret_entity.max_health = 1000;
 
-
 robotank_turret_entity.flags = {
   "player-creation",        -- Supposedly this factors into enemy aggro.
   "placeable-off-grid",     -- Allow initial placement to be right where I put it.
   "not-on-map",             -- Do not draw the turret on the minimap.
   "not-repairable",         -- Bots cannot repair the turret (any damage is moved to the tank).
 };
+
+-- Remove all of the graphics associated with the turret since they
+-- overlay weirdly on the tank and aren't needed since the tank itself
+-- provides more or less adequate visuals.
+local blank_layers = {
+  layers = {
+    {
+      axially_symmetrical = false,
+      direction_count = 1,
+      filename = "__VehicleLeash__/graphics/empty16x16.png",
+      frame_count = 1,
+      height = 16,
+      width = 16
+    },
+  },
+};
+robotank_turret_entity.attacking_animation = blank_layers;
+robotank_turret_entity.base_picture = blank_layers;
+robotank_turret_entity.folded_animation = blank_layers;
+robotank_turret_entity.folding_animation = blank_layers;
+robotank_turret_entity.prepared_animation = blank_layers;
+robotank_turret_entity.preparing_animation = blank_layers;
 
 -- Push these new things into the main data table.
 data:extend{
