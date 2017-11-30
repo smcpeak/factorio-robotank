@@ -1,6 +1,5 @@
 TODO list for RoboTank mod
 
-- Use item.prototype in ammo loading code
 - Optimize collision detection to only run every other frame?
 - Better icon and name for the transmitter object
 - Sensible placement of transmitter in the crafting grid

@@ -205,26 +205,16 @@ local function pos_in_front_of(ent, distance)
   return add_vec(ent.position, displacement);
 end;
 
--- Get the name of some bullet ammo in the given inventory,
--- or nil if there is none.  If there are multiple kinds of
--- bullet ammo available, this gets one of them arbitrarily.
--- I expect users to only put their preferred kind of ammo
--- into the tank.
-local function get_bullet_ammo(inv)
-  for name, count in pairs(inv.get_contents()) do
-    local proto = game.item_prototypes[name];
-    if (proto) then
-      if (proto.type == "ammo") then
-        -- I do not know what effect the argument "turret" has here.
-        local ammo_type = proto.get_ammo_type("turret");
-        if (ammo_type.category == "bullet") then
-          return name;
-        end;
-      end;
-    else
-      log("No prototype for item: " + name);
+-- Get the name of some item in the source inventory that can be
+-- added to the destination inventory.  If there are more than one,
+-- returns one arbitrarily.  Otherwise return nil.
+local function get_insertable_item(source, dest)
+  for name, _ in pairs(source.get_contents()) do
+    if (dest.can_insert(name)) then
+      return name;
     end;
   end;
+  return nil;
 end;
 
 -- Try to keep the turret stocked up on ammo by taking it from the tank.
@@ -241,13 +231,15 @@ local function maybe_load_robotank_turret_ammo(controller)
   -- ammo is empty, so the turret stops firing and shows the no-ammo icon
   -- briefly.
   if (turret_inv.is_empty()) then
-    -- Check the vehicle's ammo slot.
+    -- Check the vehicle's ammo slot.  The robotank vehicle ammo is not
+    -- otherwise used, but I still check it because when I shift-click to
+    -- put ammo into the robotank, the ammo slot gets populated first.
     local car_inv = controller.vehicle.get_inventory(defines.inventory.car_ammo);
     if (not car_inv) then
       log("Failed to get car_ammo inventory!");
       return;
     end;
-    local ammo_type = get_bullet_ammo(car_inv);
+    local ammo_type = get_insertable_item(car_inv, turret_inv);
     if (not ammo_type) then
       -- Try the trunk.
       car_inv = controller.vehicle.get_inventory(defines.inventory.car_trunk);
@@ -255,7 +247,7 @@ local function maybe_load_robotank_turret_ammo(controller)
         log("Failed to get car_trunk inventory!");
         return;
       end;
-      ammo_type = get_bullet_ammo(car_inv);
+      ammo_type = get_insertable_item(car_inv, turret_inv);
     end;
 
     if (ammo_type) then
