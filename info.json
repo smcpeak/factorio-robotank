@@ -1,11 +1,11 @@
 {
-    "name": "VehicleLeash",
+    "name": "RoboTank",
     "version": "0.1.0",
-    "title": "Vehicle Leash",
+    "title": "RoboTank",
     "author": "Scott McPeak",
     "contact": "",
     "homepage": "",
     "factorio_version": "0.15",
     "dependencies": ["base >= 0.15"],
-    "description": "Drive a tank like walking your dog!"
+    "description": "RoboTank is a tank that drives and shoots automatically."
 }

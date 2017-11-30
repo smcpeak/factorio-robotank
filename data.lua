@@ -1,22 +1,22 @@
--- VehicleLeash data.lua
+-- RoboTank data.lua
 -- Extend the global data table to describe the mod elements.
 
--- Recipe to allow one to create the leash.
-local leash_recipe = {
+-- Recipe to allow one to create the transmitter that controls robotanks.
+local transmitter_recipe = {
   type = "recipe",
-  name = "vehicle-leash-recipe",
+  name = "robotank-transmitter-recipe",
   enabled = true,
   ingredients = {
     {"steel-plate", 5},
     {"electronic-circuit", 2}
   },
-  result = "vehicle-leash-item",
+  result = "robotank-transmitter-item",
 };
 
--- Inventory item corresponding to the leash.
-local leash_item = table.deepcopy(data.raw.item["iron-plate"]);
-leash_item.name = "vehicle-leash-item";
-leash_item.icons = {
+-- Inventory item corresponding to the transmitter.
+local transmitter_item = table.deepcopy(data.raw.item["iron-plate"]);
+transmitter_item.name = "robotank-transmitter-item";
+transmitter_item.icons = {
   {
     icon = "__base__/graphics/icons/tank.png",
   },
@@ -131,7 +131,7 @@ local blank_layers = {
     {
       axially_symmetrical = false,
       direction_count = 1,
-      filename = "__VehicleLeash__/graphics/empty16x16.png",
+      filename = "__RoboTank__/graphics/empty16x16.png",
       frame_count = 1,
       height = 16,
       width = 16
@@ -147,8 +147,8 @@ robotank_turret_entity.preparing_animation = blank_layers;
 
 -- Push these new things into the main data table.
 data:extend{
-  leash_recipe,
-  leash_item,
+  transmitter_recipe,
+  transmitter_item,
   gunfire_entity,
   robotank_recipe,
   robotank_item,

@@ -1,4 +1,4 @@
--- VehicleLeash control.lua
+-- RoboTank control.lua
 -- Actions that run while the user is playing the game.
 
 require "util"             -- table.deepcopy
@@ -7,11 +7,11 @@ require "factorio_util"    -- vehicle_velocity, etc.
 
 
 script.on_init(function()
-  log("VehicleLeash on_init called.");
+  log("RoboTank on_init called.");
 end);
 
 script.on_load(function()
-  log("VehicleLeash on_load called.");
+  log("RoboTank on_load called.");
 end);
 
 -- True once we have scanned the world for vehicles after loading.
@@ -119,7 +119,7 @@ end;
 
 -- Scan the world for vehicles.
 local function find_vehicles()
-  log("VehicleLeash: find_vehicles");
+  log("RoboTank: find_vehicles");
 
   -- Scan the surface for all of our hidden turrets so that later we
   -- can get rid of any not associated with a vehicle.
@@ -186,9 +186,9 @@ local function find_commander_vehicle(vehicles)
     local v = controller.vehicle;
     -- A robotank cannot be a commander.
     if (v.name ~= "robotank") then
-      -- It must have the leash controller item in its trunk.
+      -- It must have the transmitter item in its trunk.
       local inv = v.get_inventory(defines.inventory.car_trunk);
-      if (inv and inv.get_item_count("vehicle-leash-item") > 0) then
+      if (inv and inv.get_item_count("robotank-transmitter-item") > 0) then
         --log("Commander vehicle is unit " .. v.unit_number);
         return v;
       end;
@@ -793,7 +793,7 @@ end);
 script.on_event({defines.events.on_built_entity, defines.events.on_robot_built_entity},
   function(e)
     local ent = e.created_entity;
-    --log("VehicleLeash: saw built event: " .. serpent.block(entity_info(ent)));
+    --log("RoboTank: saw built event: " .. serpent.block(entity_info(ent)));
     if (ent.type == "car") then
       local controller = add_vehicle(ent);
     end;
@@ -989,9 +989,9 @@ end;
 -- Unit tests, meant to be run using the stand-alone Lua interpreter.
 -- See unit-tests.sh.
 function unit_tests()
-  print("Running unit tests for VehicleLeash control.lua ...");
+  print("Running unit tests for RoboTank control.lua ...");
   test_predict_approach();
-  print("VehicleLeash unit tests passed");
+  print("RoboTank unit tests passed");
 end;
 
 

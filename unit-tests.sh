@@ -1,5 +1,5 @@
 #!/bin/sh
-# command line unit tests for VehicleLeash
+# command line unit tests for RoboTank
 
 # /d/dist/factorio is where I put serpent.lua.
 
