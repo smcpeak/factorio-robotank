@@ -14,16 +14,14 @@ local transmitter_recipe = {
 };
 
 -- Inventory item corresponding to the transmitter.
-local transmitter_item = table.deepcopy(data.raw.item["iron-plate"]);
-transmitter_item.name = "robotank-transmitter-item";
-transmitter_item.icons = {
-  {
-    icon = "__base__/graphics/icons/tank.png",
-  },
-  {
-    icon = "__base__/graphics/icons/iron-plate.png",
-    tint = {r=0, g=1, b=0, a=0.5},
-  },
+local transmitter_item = {
+  name = "robotank-transmitter-item",
+  flags = {},
+  icon = "__RoboTank__/graphics/icons/transmitter.png",
+  order = "x[transmitter]",
+  stack_size = 5,
+  subgroup = "defensive-structure",
+  type = "item"
 };
 
 -- Recipe to allow one to create the robotank.
@@ -43,6 +41,8 @@ local robotank_item = table.deepcopy(data.raw["item-with-entity-data"].tank);
 robotank_item.name = "robotank-item";
 robotank_item.place_result = "robotank-entity";
 robotank_item.stack_size = 5;    -- Like train cars, etc.
+robotank_item.subgroup = "defensive-structure";
+robotank_item.order = "x[robotank]";
 robotank_item.icons = {
   {
     icon = "__base__/graphics/icons/tank.png",

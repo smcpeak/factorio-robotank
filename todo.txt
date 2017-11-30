@@ -1,8 +1,6 @@
 TODO list for RoboTank mod
 
 - Optimize collision detection to only run every other frame?
-- Better icon and name for the transmitter object
-- Sensible placement of transmitter in the crafting grid
 - Organize robotanks into squads
 - Limit the number of tanks in a squad
   - Means saving some data persistently
