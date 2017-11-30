@@ -1,11 +1,56 @@
 -- RoboTank data.lua
 -- Extend the global data table to describe the mod elements.
 
+-- Technology to make robotanks and transmitters.
+local robotank_technology = {
+  type = "technology",
+  name = "robotank-technology",
+  effects = {
+    {
+      type = "unlock-recipe",
+      recipe = "robotank-recipe",
+    },
+    {
+      type = "unlock-recipe",
+      recipe = "robotank-transmitter-recipe",
+    },
+  },
+  icon = "__RoboTank__/graphics/technology/robotank-technology.png",
+  icon_size = 128,       -- Subtle!  This is needed for icons not in the "base" mod!
+  order = "e-c-c-2",     -- I want it after "tanks", but this does not work and I do not see why.
+  prerequisites = {
+    "robotics",
+    "tanks"
+  },
+  unit = {               -- Same cost as tanks.
+    count = 75,
+    ingredients = {
+      {
+        "science-pack-1",
+        1
+      },
+      {
+        "science-pack-2",
+        1
+      },
+      {
+        "science-pack-3",
+        1
+      },
+      {
+        "military-science-pack",
+        1
+      }
+    },
+    time = 30
+  }
+};
+
 -- Recipe to allow one to create the transmitter that controls robotanks.
 local transmitter_recipe = {
   type = "recipe",
   name = "robotank-transmitter-recipe",
-  enabled = true,
+  enabled = false,
   ingredients = {
     {"iron-plate", 6},            -- Six sides of a metal box.
     {"processing-unit", 1},       -- Raise tech requirements.
@@ -30,11 +75,11 @@ local transmitter_item = {
 local robotank_recipe = {
   type = "recipe",
   name = "robotank-recipe",
-  enabled = true,
+  enabled = false,
   ingredients = {
     {"tank", 1},                  -- Base vehicle.
     {"processing-unit", 1},       -- Computer for driving and shooting algorithms.
-    {"construction-robot", 1},    -- The robot "driver", with its implicit radio receiver.
+    {"flying-robot-frame", 1},    -- The robot "driver", with its implicit radio receiver.
   },
   result = "robotank-item",
 };
@@ -145,6 +190,7 @@ robotank_turret_entity.preparing_animation = blank_layers;
 
 -- Push these new things into the main data table.
 data:extend{
+  robotank_technology,
   transmitter_recipe,
   transmitter_item,
   robotank_recipe,

@@ -4,7 +4,7 @@ TODO list for RoboTank mod
 - Organize robotanks into squads
 - Limit the number of tanks in a squad
   - Means saving some data persistently
-- Research robotanks and increases to the squad size limit
+- Research to increase the squad size limit
 - Put robotanks into idle mode for better performance when not active
 - Range limit on the transmitter
 - Detect and avoid running into the shore
