@@ -69,10 +69,16 @@ function vector_to_orientation(v)
   return orientation;
 end;
 
+-- Get the velocity vector of a vehicle in meters (game units) per tick
+-- if its speed is 'speed'.
+function vehicle_velocity_if_speed(v, speed)
+  local direction = orientation_to_unit_vector(v.orientation);
+  return multiply_vec(direction, speed);
+end;
+
 -- Get the velocity vector of a vehicle in meters (game units) per tick.
 function vehicle_velocity(v)
-  local direction = orientation_to_unit_vector(v.orientation);
-  return multiply_vec(direction, v.speed);
+  return vehicle_velocity_if_speed(v, v.speed);
 end;
 
 riding_acceleration_string_table = {

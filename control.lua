@@ -36,6 +36,18 @@ local function new_vehicle_controller(v)
 
     -- Do not activate automatic driving until this tick.
     automatic_drive_min_tick = 0,
+
+    -- When not nil, this records the tick number when the vehicle
+    -- became stuck, prevented from going the way it wants to by
+    -- some obstacles.  If we are stuck long enough, the vehicle
+    -- will try to reverse out.
+    stuck_since = nil,
+
+    -- When not nil, the vehicle has decided to reverse out of its
+    -- current position until the indicated tick count.  When that
+    -- tick passes, the vehicle will first brake until it is stopped,
+    -- then clear the field and resume normal driving.
+    reversing_until = nil,
   };
 end;
 
@@ -418,6 +430,53 @@ local function collision_avoidance(tick, vehicles, v)
   return cannot_turn, must_brake, cannot_accelerate;
 end;
 
+-- Is it safe for vehicle 'v' to reverse out of a stuck position?
+local function can_reverse(tick, vehicles, v)
+  for _, controller in pairs(vehicles) do
+    if (controller.vehicle ~= v) then
+      -- With this vehicle reversing at a nominal velocity, and the
+      -- other vehicle at its current velocity, how long until we come
+      -- close, and in which direction would contact occur?
+      local approach_ticks, approach_angle = predict_approach(
+        controller.vehicle.position,
+        vehicle_velocity(controller.vehicle),
+        v.position,
+        vehicle_velocity_if_speed(v, -0.1),
+        4);
+      local approach_orientation = radians_to_orientation(approach_angle);
+      local relative_orientation = normalize_orientation(approach_orientation - v.orientation);
+      if (approach_ticks ~= nil and (0.25 <= relative_orientation and relative_orientation <= 0.75)) then
+        -- Contact would occur in back; is it soon?
+        if (approach_ticks < 100) then
+          if (tick % 60 == 0) then
+            log("Vehicle " .. v.unit_number ..
+                " cannot reverse because it would hit vehicle " ..
+                controller.vehicle.unit_number ..
+                " at orientation " .. relative_orientation ..
+                " in " .. approach_ticks .. " ticks.");
+          end;
+          return false;
+        end;
+      end;
+    end;
+  end;
+
+  return true;
+end;
+
+
+-- Get the number of robotanks in 'vehicles'.
+local function num_robotanks(vehicles)
+  local ct = 0;
+  for _, controller in pairs(vehicles) do
+    if (controller.vehicle.name == "robotank-entity") then
+      ct = ct + 1;
+    end;
+  end;
+  return ct;
+end;
+
+
 -- Tell all the robotank vehicles how to drive themselves.  This means
 -- setting their 'riding_state', which is basically programmatic control
 -- of what the player can do with the WASD keys.
@@ -447,9 +506,8 @@ local function drive_vehicles(tick_num)
       --     " with orientation " .. commander_vehicle.orientation ..
       --     ", desired_pos is " .. serpent.line(desired_pos));
 
-      -- Size the formation based on the number of vehicles, assuming that
-      -- one is the commander vehicle.
-      local formation_size = table_size(vehicles) - 1;
+      -- Size the formation based on the number of vehicles.
+      local formation_size = num_robotanks(vehicles);
 
       -- Side-to-side offset for each additional unit.
       local lateral_vec = orientation_to_unit_vector(commander_vehicle.orientation + 0.25);
@@ -482,14 +540,28 @@ local function drive_vehicles(tick_num)
           local projected_straight_disp = subtract_vec(next_disp, cur_velocity);
           local projected_straight_dist = magnitude(projected_straight_disp);
           if (projected_straight_dist < 0.1) then
-            -- We will be close to the target position.
-            if ((commander_vehicle.speed == 0) and v.speed > 0) then
-              -- Hack: commander is stopped, we should stop too.  (I would prefer that
-              -- this behavior emerge naturally without making a special case.)
+            -- We are or will be close to the target position.  Is the commander
+            -- stopped?  (The test here is not for commander speed is zero because
+            -- if the player jumps out and lets the vehicle coast to a stop, it
+            -- takes about a minute for friction to get the speed to zero, even
+            -- though all visible movement stops in a few seconds.)
+            if ((math.abs(commander_vehicle.speed) < 1e-3) and v.speed > 0) then
+              -- Hack: Commander is stopped, we should stop too.  (I would prefer that
+              -- this behavior emerge naturally without making a special case.  But as
+              -- things stand, without this, the tanks will slowly circle their target
+              -- endlessly if I do not force them to stop.)
               pedal = defines.riding.acceleration.braking;
             else
-              -- Just coast straight.
+              -- Just coast straight.  Among the situations this applies is when
+              -- the tank is in its intended spot in the formation, moving at the
+              -- same speed as the commander.
             end;
+
+            -- Since we're basically at our destination, clear the stuck
+            -- avoidance variables since we're not going down the other code
+            -- path for a while now.
+            controller.stuck_since = nil;
+            controller.reversing_until = nil;
 
           else
             -- Compute orientation in [0,1] that will reduce displacement.
@@ -519,6 +591,9 @@ local function drive_vehicles(tick_num)
               end;
 
               -- Desired speed as a function of projected distance to target.
+              -- This has a quadratic component since stopping distance does
+              -- as well (although I do not explicitly calculate that).  The
+              -- coefficients were determined through crude experimentation.
               local desired_speed =
                 projected_straight_dist * 0.01 +
                 projected_straight_dist * projected_straight_dist * 0.001;
@@ -531,24 +606,91 @@ local function drive_vehicles(tick_num)
             end;
           end;
 
-          -- Having decided what we want to do, restrict it in order to
-          -- avoid collisions.
+          -- Having decided what we would want to do in the absence of
+          -- obstacles, restrict behavior in order to avoid collisions.
           local cannot_turn, must_brake, cannot_accelerate = collision_avoidance(tick_num, vehicles, v);
-          --[[
-          if (tick_num % 60 == 0) then
-            log("cannot_turn=" .. serpent.line(cannot_turn) ..
-                " must_brake=" .. serpent.line(must_brake) ..
-                " cannot_accelerate=" .. serpent.line(cannot_accelerate));
-          end;
-          --]]
-          if (must_brake) then
-            pedal = defines.riding.acceleration.braking;
-          elseif (cannot_accelerate and pedal == defines.riding.acceleration.accelerating) then
-            pedal = defines.riding.acceleration.nothing;
+
+          -- Are we reversing out of a stuck position?  That overrides the
+          -- decisions made above.
+          local reversing = false;
+          local stopping = false;
+          if (controller.reversing_until ~= nil) then
+            reversing = true;
+            if (controller.reversing_until > tick_num) then
+              -- Continue reversing.
+            else
+              if (v.speed ~= 0) then
+                -- Brake until we are stopped.
+                stopping = true;
+              else
+                -- We have come to a stop, we can leave this state.
+                log("Vehicle " .. unit_number .. " finished reversing.");
+                controller.reversing_until = nil;
+              end;
+            end;
           end;
 
-          if (cannot_turn) then
+          --[[
+          if (tick_num % 60 == 0) then
+            log("Vehicle " .. unit_number ..
+                ": cannot_turn=" .. serpent.line(cannot_turn) ..
+                " must_brake=" .. serpent.line(must_brake) ..
+                " cannot_accelerate=" .. serpent.line(cannot_accelerate) ..
+                " reversing=" .. serpent.line(reversing) ..
+                " stopping=" .. serpent.line(stopping));
+          end;
+          --]]
+
+          -- Are we stuck?  This tests for low speed rather than zero speed
+          -- because when a tank is stuck against water, it has a speed of
+          -- about 0.003 once every 300 ticks (coincidentally the same as my
+          -- stuck timer duration), even though it is not moving.  I think that
+          -- is an artifact of Factorio collision mechanics.
+          if (math.abs(v.speed) < 0.005 and not reversing) then
+            if (controller.stuck_since == nil) then
+              -- Just became stuck, wait a bit to see if things clear up.
+              -- We might not even really be stuck; speed sometimes drops
+              -- quite low even when cruising.
+              controller.stuck_since = tick_num;
+            elseif (controller.stuck_since + 300 <= tick_num) then
+              -- Have been stuck for a while.  Periodically check if we
+              -- can safely reverse out of here.
+              if (tick_num % 60 == 0) then
+                if (can_reverse(tick_num, vehicles, v)) then
+                  log("Vehicle " .. unit_number .. " is stuck, trying to reverse out of it.");
+                  controller.stuck_since = nil;
+                  controller.reversing_until = tick_num + 60;
+                  reversing = true;
+                else
+                  log("Vehicle " .. unit_number .. " is stuck and cannot reverse.");
+                end;
+              end;
+            end;
+          else
+            -- Not stuck, reset stuck timer.
+            controller.stuck_since = nil;
+          end;
+
+          -- Apply the collision and stuck avoidance flags to the driving
+          -- controls, overriding the ordinary navigation decisions.
+          if (reversing) then
             turn = defines.riding.direction.straight;
+            if (stopping) then
+              pedal = defines.riding.acceleration.braking;
+            else
+              pedal = defines.riding.acceleration.reversing;
+            end;
+
+          else
+            if (must_brake) then
+              pedal = defines.riding.acceleration.braking;
+            elseif (cannot_accelerate and pedal == defines.riding.acceleration.accelerating) then
+              pedal = defines.riding.acceleration.nothing;
+            end;
+
+            if (cannot_turn) then
+              turn = defines.riding.direction.straight;
+            end;
           end;
 
           -- Apply the desired controls to the vehicle.
@@ -561,7 +703,10 @@ local function drive_vehicles(tick_num)
           if (tick_num % 60 == 0) then
             local pedal_string = riding_acceleration_string_table[pedal];
             local turn_string = riding_direction_string_table[turn];
-            log("pedal=" .. pedal_string .. ", turn=" .. turn_string);
+            log("Vehicle " .. unit_number ..
+                ": pedal=" .. pedal_string ..
+                " turn=" .. turn_string ..
+                " speed=" .. v.speed);
           end;
           --]]
         end;
