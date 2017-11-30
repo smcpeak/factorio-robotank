@@ -267,7 +267,7 @@ end;
 -- Do per-tick updates of robotanks.
 local function update_robotanks(tick)
   for force, vehicles in pairs(force_to_vehicles) do
-    for unit_number, controller in ordered_pairs(vehicles) do
+    for unit_number, controller in pairs(vehicles) do
       if (controller.vehicle.name == "robotank-entity") then
         if (controller.turret ~= nil) then
           -- Transfer any damage sustained by the turret to the tank.
@@ -503,7 +503,7 @@ local function drive_vehicles(tick_num)
     local commander_vehicle = find_commander_vehicle(vehicles);
     if (commander_vehicle == nil) then
       --log("Force " .. force .. " does not have a commander vehicle.");
-      for unit_number, controller in ordered_pairs(vehicles) do
+      for unit_number, controller in pairs(vehicles) do
         if (controller.vehicle.name == "robotank-entity") then
           -- Don't let the vehicles run away when there is no commander.
           controller.vehicle.riding_state = {
