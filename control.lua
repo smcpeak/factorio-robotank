@@ -17,6 +17,10 @@ end);
 -- True once we have scanned the world for vehicles after loading.
 local found_vehicles = false;
 
+-- When this is true, an invalid vehicle has been recently removed,
+-- so we have to refresh the lists of nearby vehicles.
+local nearby_vehicles_requires_refresh = false;
+
 -- Map from force to its vehicles.  Each force's vehicles are a map
 -- from unit_number to its vehicle_controller object.
 local force_to_vehicles = {};
@@ -30,6 +34,11 @@ local function new_vehicle_controller(v)
 
     -- Associated turret entity that does the shooting.
     turret = nil,
+
+    -- If this is a robotank that has a commander, this is an {x,y}
+    -- position that this robotank should go to in its formation,
+    -- relative to the commander, when the commander is facing East.
+    formation_position = nil;
 
     -- Vehicle's position during the previous tick.
     previous_position = v.position,
@@ -152,6 +161,7 @@ local function remove_invalid_vehicles()
           log("Turret of vehicle " .. unit_number .. " destroyed, killing tank too.");
           controller.vehicle.destroy();
           vehicles[unit_number] = nil;
+          nearby_vehicles_requires_refresh = true;
         else
           num_vehicles = num_vehicles + 1;
         end;
@@ -162,6 +172,7 @@ local function remove_invalid_vehicles()
           log("Removed turret from invalid vehicle.");
         end;
         vehicles[unit_number] = nil;
+        nearby_vehicles_requires_refresh = true;
         log("Removed invalid vehicle " .. unit_number .. ".");
       end;
     end;
@@ -390,7 +401,7 @@ local function collision_avoidance(tick, vehicles, controller)
 
   -- Periodically refresh the list of other vehicles near enough
   -- to this one to be relevant.
-  if (tick % 60 == 0) then
+  if (nearby_vehicles_requires_refresh or (tick % 60 == 0)) then
     controller.nearby_vehicles = {};
     for _, other in pairs(vehicles) do
       if (other.vehicle ~= v) then
@@ -495,6 +506,30 @@ local function num_robotanks(vehicles)
 end;
 
 
+-- Given a commander vehicle and a robotank vehicle, where the robotank
+-- is joining the commander's squad, determine the position of the
+-- robotank vehicle relative to the commander.  That will become its
+-- position in the formation.
+local function world_position_to_formation_position(commander_vehicle, vehicle)
+  local offset = subtract_vec(vehicle.position, commander_vehicle.position);
+  local commander_angle = orientation_to_radians(commander_vehicle.orientation);
+
+  -- Rotate *against* the commander when we first join.
+  return rotate_vec(offset, -commander_angle);
+end;
+
+
+-- Given a commander vehicle and a formation position relative to that
+-- commander, calculate the proper world position for a robotank with
+-- that formation position.
+local function formation_position_to_world_position(commander_vehicle, formation_position)
+  local commander_angle = orientation_to_radians(commander_vehicle.orientation);
+
+  -- Rotate *with* the commander when part of the squad.
+  return add_vec(commander_vehicle.position, rotate_vec(formation_position, commander_angle));
+end;
+
+
 -- Tell all the robotank vehicles how to drive themselves.  This means
 -- setting their 'riding_state', which is basically programmatic control
 -- of what the player can do with the WASD keys.
@@ -513,33 +548,31 @@ local function drive_vehicles(tick_num)
                  defines.riding.acceleration.nothing),
             direction = defines.riding.direction.straight,
           };
+
+          -- Also clear the formation position so when a commander
+          -- arrives it will be reinitialized.
+          controller.formation_position = nil;
         end;
       end;
     else
       local commander_velocity = vehicle_velocity(commander_vehicle);
 
-      -- Compute a desired slave vehicle position in front of the commander vehicle.
-      local desired_pos = pos_in_front_of(commander_vehicle, 15);
-      --log("CV is at " .. serpent.line(commander_vehicle.position) ..
-      --     " with orientation " .. commander_vehicle.orientation ..
-      --     ", desired_pos is " .. serpent.line(desired_pos));
-
-      -- Size the formation based on the number of vehicles.
-      local formation_size = num_robotanks(vehicles);
-
-      -- Side-to-side offset for each additional unit.
-      local lateral_vec = orientation_to_unit_vector(commander_vehicle.orientation + 0.25);
-      lateral_vec = multiply_vec(lateral_vec, 5);     -- 5 is the spacing.
-      local lateral_fact = formation_size / 2;
-
-      for unit_number, controller in ordered_pairs(vehicles) do
+      for unit_number, controller in pairs(vehicles) do
         local v = controller.vehicle;
         if (v.name == "robotank-entity") then
+          if (controller.formation_position == nil) then
+            -- This robotank is joining the formation.
+            controller.formation_position =
+              world_position_to_formation_position(commander_vehicle, controller.vehicle);
+          end;
+
+          -- Where does this vehicle want to be?
+          local desired_position =
+            formation_position_to_world_position(commander_vehicle, controller.formation_position);
+
           -- Calculate the displacement between where we are now and where
-          -- we want to be in formation in front of the commander's vehicle.
-          local full_lateral = multiply_vec(lateral_vec, lateral_fact);
-          lateral_fact = lateral_fact - 1;
-          local displacement = subtract_vec(add_vec(desired_pos, full_lateral), v.position);
+          -- we want to be.
+          local displacement = subtract_vec(desired_position, v.position);
 
           -- Goal here is to decide how to accelerate and turn.
           local pedal = defines.riding.acceleration.nothing;
@@ -750,6 +783,10 @@ script.on_event(defines.events.on_tick, function(e)
   -- of the robotanks when I turn left and right.  So, I'll do the
   -- overall routine on every tick, but perhaps do some parts less often.
   drive_vehicles(e.tick);
+
+  -- Clear this flag only at the end of the tick so that all of the
+  -- lists get refreshed.
+  nearby_vehicles_requires_refresh = false;
 end);
 
 -- On built entity: add to tables.

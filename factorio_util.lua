@@ -50,11 +50,13 @@ function normalize_orientation(o)
   return o;
 end;
 
+-- Convert orientation in [0,1] where 0 is North, 0.25 is East, etc.,
+-- to radians in [-pi/2, 3*pi/2] where 0 is East, pi/2 is South, etc.
 function orientation_to_radians(orientation)
   return (orientation - 0.25) * 2 * math.pi;
 end;
 
--- Convert to radians in [-pi,pi] to orientation in [-0.25, 0.75].
+-- Convert to radians in [-pi, pi] to orientation in [-0.25, 0.75].
 function radians_to_orientation(radians)
   return radians / (2 * math.pi) + 0.25;
 end;
