@@ -99,15 +99,35 @@ end;
 local function find_vehicles()
   log("VehicleLeash: find_vehicles");
 
-  local vehicles = game.surfaces[1].find_entities_filtered{
-    type = "car",
-  };
-  for _, v in ipairs(vehicles) do
+  -- Scan the surface for all of our hidden turrets so that later we
+  -- can get rid of any not associated with a vehicle.
+  local turrets = {};
+  for _, t in ipairs(game.surfaces[1].find_entities_filtered{name="robotank-turret-entity"}) do
+    turrets[t.unit_number] = t;
+  end;
+
+  -- Add all vehicles to 'force_to_vehicles' table.
+  for _, v in ipairs(game.surfaces[1].find_entities_filtered{type = "car"}) do
     --log("found vehicle: " .. serpent.block(entity_info(v)));
-    add_vehicle(v);
+    local controller = add_vehicle(v);
+    if (controller.turret ~= nil) then
+      -- This turret is now accounted for (it might have existed before,
+      -- or it might have just been created by 'add_vehicle).
+      turrets[controller.turret.unit_number] = nil;
+    end;
+  end;
+
+  -- Destroy any unassociated turrets.  There should never be any, but
+  -- this will catch things that might be left behind due to a bug in
+  -- my code.
+  for unit_number, t in pairs(turrets) do
+    log("WARNING: Should not happen: destroying unassociated turret " .. unit_number);
+    t.destroy();
   end;
 end;
 
+-- Remove any vehicles (or turrets) that are in the vehicle table.  Entities
+-- become invalid due to being destroyed or mined.
 local function remove_invalid_vehicles()
   for force, vehicles in pairs(force_to_vehicles) do
     local num_vehicles = 0;
@@ -398,6 +418,9 @@ local function collision_avoidance(tick, vehicles, v)
   return cannot_turn, must_brake, cannot_accelerate;
 end;
 
+-- Tell all the robotank vehicles how to drive themselves.  This means
+-- setting their 'riding_state', which is basically programmatic control
+-- of what the player can do with the WASD keys.
 local function drive_vehicles(tick_num)
   for force, vehicles in pairs(force_to_vehicles) do
     local commander_vehicle = find_commander_vehicle(vehicles);
@@ -548,17 +571,22 @@ local function drive_vehicles(tick_num)
 end;
 
 script.on_event(defines.events.on_tick, function(e)
+  -- On the very first tick after loading, initialize the vehicle table.
   if (not found_vehicles) then
     found_vehicles = true;
     find_vehicles();
   end;
 
-  --if not ((e.tick % 30) == 0) then return; end;
-  --log("VehicleLeash once per half-second event called.");
-
   remove_invalid_vehicles();
 
   update_robotanks(e.tick)
+
+  -- For now at least, we recalculate driving controls on every tick.  I
+  -- would like to do this less often, but I need to first measure the
+  -- performance impact (to see if it matters) and also do some experiments
+  -- to see what the impact is on the tank behavior.  But I don't want to
+  -- invest in that until I'm happy with how they behave when I recalculate
+  -- on every tick.
   drive_vehicles(e.tick);
 end);
 
@@ -570,9 +598,10 @@ script.on_event({defines.events.on_built_entity, defines.events.on_robot_built_e
     if (ent.type == "car") then
       local controller = add_vehicle(ent);
 
-      -- When a new robotank is placed, delay its automatic drive for 5s.
+      -- When a new robotank is placed, delay its automatic drive.
       -- This gives it time to get loaded with fuel and ammo by inserters
       -- before it drives away from the placement spot.
+      -- TODO: That doesn't really work, I should remove this.
       controller.automatic_drive_min_tick = e.tick + 120;
     end;
   end
@@ -582,7 +611,10 @@ script.on_event({defines.events.on_player_mined_entity},
   function(e)
     if (e.entity.name == "robotank-entity") then
       -- When we pick up a robotank, also grab any unused ammo in
-      -- the turret entity so it is no lost.
+      -- the turret entity so it is not lost.  That doesn't matter
+      -- much when cleaning up after a big battle, but it is annoying
+      -- to lose ammo if I put down a robotank and then pick it up
+      -- again without doing any fighting.
       local controller = find_robotank_controller(e.entity);
       if (controller and controller.turret) then
         local turret_inv = controller.turret.get_inventory(defines.inventory.turret_ammo);
@@ -761,7 +793,8 @@ local function test_predict_approach()
 end;
 
 
--- Unit tests, meant to be run via Lua command line:
+-- Unit tests, meant to be run at bash command line using the
+-- stand-alone Lua interpreter:
 --
 --  $ LUA_PATH='/d/SteamLibrary/steamapps/common/Factorio/data/core/lualib/?.lua;/d/dist/factorio/?.lua;?.lua' lua -l stubs -l control -e 'unit_tests()'
 --
@@ -770,7 +803,6 @@ function unit_tests()
   print("Running unit tests for VehicleLeash control.lua ...");
   test_predict_approach();
   print("VehicleLeash unit tests passed");
-
 end;
 
 
