@@ -51,7 +51,7 @@ local found_vehicles = false;
 local force_to_vehicles = {};
 
 -- Control state for a vehicle.  All vehicles have control states,
--- including the player vehicle (if any).
+-- including the commander vehicle (if any).
 local function new_vehicle_controller(v)
   return {
     -- Reference to the Factorio vehicle entity we are controlling.
@@ -165,19 +165,21 @@ local function remove_invalid_vehicles()
   end;
 end;
 
-local function find_player_vehicle(vehicles)
+-- Find the vehicle among 'vehicles' that is commanding them, if any.
+local function find_commander_vehicle(vehicles)
   for unit_number, controller in pairs(vehicles) do
     local v = controller.vehicle;
-    -- It must be a vehicle that the player is riding in.
-    if ((v.passenger ~= nil) and (v.passenger.type == "player")) then
-      -- And it must have the leash controller item in its trunk.
+    -- A robotank cannot be a commander.
+    if (v.name ~= "robotank") then
+      -- It must have the leash controller item in its trunk.
       local inv = v.get_inventory(defines.inventory.car_trunk);
       if (inv and inv.get_item_count("vehicle-leash-item") > 0) then
-        --log("Player vehicle is unit " .. v.unit_number);
+        --log("Commander vehicle is unit " .. v.unit_number);
         return v;
       end;
     end;
   end;
+  return nil;
 end;
 
 -- "Orientation" in Factor is a floating-point number in [0,1]
@@ -550,43 +552,45 @@ end;
 
 local function drive_vehicles(tick_num)
   for force, vehicles in pairs(force_to_vehicles) do
-    local player_vehicle = find_player_vehicle(vehicles);
-    if (player_vehicle == nil) then
-      --log("Force " .. force .. " does not have a player vehicle.");
+    local commander_vehicle = find_commander_vehicle(vehicles);
+    if (commander_vehicle == nil) then
+      --log("Force " .. force .. " does not have a commander vehicle.");
       for unit_number, controller in ordered_pairs(vehicles) do
         if (controller.vehicle.name == "robotank-entity") then
-          -- Don't let the vehicles run away when I jump out.
+          -- Don't let the vehicles run away when there is no commander.
           controller.vehicle.riding_state = {
-            acceleration = defines.riding.acceleration.nothing;
-            direction = defines.riding.direction.straight;
+            acceleration =
+              ((controller.vehicle.speed ~= 0) and
+                 defines.riding.acceleration.braking or
+                 defines.riding.acceleration.nothing),
+            direction = defines.riding.direction.straight,
           };
         end;
       end;
     else
-      local player_velocity = vehicle_velocity(player_vehicle);
+      local commander_velocity = vehicle_velocity(commander_vehicle);
 
-      -- Compute a desired slave vehicle position in front of the player vehicle.
-      local desired_pos = pos_in_front_of(player_vehicle, 15);
-      --log("PV is at " .. serpent.line(player_vehicle.position) ..
-      --     " with orientation " .. player_vehicle.orientation ..
+      -- Compute a desired slave vehicle position in front of the commander vehicle.
+      local desired_pos = pos_in_front_of(commander_vehicle, 15);
+      --log("CV is at " .. serpent.line(commander_vehicle.position) ..
+      --     " with orientation " .. commander_vehicle.orientation ..
       --     ", desired_pos is " .. serpent.line(desired_pos));
 
       -- Size the formation based on the number of vehicles, assuming that
-      -- one is the player vehicle.
+      -- one is the commander vehicle.
       local formation_size = table_size(vehicles) - 1;
 
       -- Side-to-side offset for each additional unit.
-      local lateral_vec = orientation_to_unit_vector(player_vehicle.orientation + 0.25);
+      local lateral_vec = orientation_to_unit_vector(commander_vehicle.orientation + 0.25);
       lateral_vec = multiply_vec(lateral_vec, 5);     -- 5 is the spacing.
       local lateral_fact = formation_size / 2;
 
       for unit_number, controller in ordered_pairs(vehicles) do
         local v = controller.vehicle;
-        if (v ~= player_vehicle and
-            v.name == "robotank-entity" and
+        if (v.name == "robotank-entity" and
             controller.automatic_drive_min_tick <= tick_num) then
           -- Calculate the displacement between where we are now and where
-          -- we want to be in formation in front of the player's vehicle.
+          -- we want to be in formation in front of the commander's vehicle.
           local full_lateral = multiply_vec(lateral_vec, lateral_fact);
           lateral_fact = lateral_fact - 1;
           local displacement = subtract_vec(add_vec(desired_pos, full_lateral), v.position);
@@ -600,9 +604,9 @@ local function drive_vehicles(tick_num)
           -- Current vehicle velocity.
           local cur_velocity = vehicle_velocity(v);
 
-          -- What will the displacement be if we stand still and the player
+          -- What will the displacement be if we stand still and the commander
           -- maintains speed and direction?
-          local next_disp = add_vec(displacement, player_velocity);
+          local next_disp = add_vec(displacement, commander_velocity);
 
           -- What will be the displacement in one tick if we maintain speed
           -- and direction?
@@ -610,8 +614,8 @@ local function drive_vehicles(tick_num)
           local projected_straight_dist = magnitude(projected_straight_disp);
           if (projected_straight_dist < 0.1) then
             -- We will be close to the target position.
-            if ((player_vehicle.speed == 0) and v.speed > 0) then
-              -- Hack: player is stopped, we should stop too.  (I would prefer that
+            if ((commander_vehicle.speed == 0) and v.speed > 0) then
+              -- Hack: commander is stopped, we should stop too.  (I would prefer that
               -- this behavior emerge naturally without making a special case.)
               pedal = defines.riding.acceleration.braking;
               pedal_string = "braking";
