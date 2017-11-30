@@ -1,37 +1,10 @@
 -- VehicleLeash control.lua
 -- Actions that run while the user is playing the game.
 
-require "util"               -- table.deepcopy
-require "lua_util"           -- My utilties, mainly the vector operations.
+require "util"             -- table.deepcopy
+require "lua_util"         -- add_vec, etc.
+require "factorio_util"    -- vehicle_velocity, etc.
 
-
--- Given something that could be a string or an object with
--- a name, yield it as a string.
-local function string_or_name_of(e)
-  if type(e) == "string" then
-    return e;
-  else
-    return e.name;
-  end;
-end;
-
--- Get various entity attributes as a table that can be converted
--- to an informative string using 'serpent'.  The input object, 'e',
--- is a Lua userdata object which serpent cannot usefully print,
--- even though it otherwise appears to be a normal Lua table.
-local function entity_info(e)
-  return {
-    name = e.name,
-    type = e.type,
-    active = e.active,
-    health = e.health,
-    position = e.position,
-    --bounding_box = e.bounding_box,
-    valid = e.valid,
-    force = string_or_name_of(e.force),
-    unit_number = e.unit_number,
-  };
-end;
 
 script.on_init(function()
   log("VehicleLeash on_init called.");
@@ -180,77 +153,12 @@ local function find_commander_vehicle(vehicles)
   return nil;
 end;
 
--- "Orientation" in Factor is a floating-point number in [0,1]
--- where 0 is North, 0.25 is East, 0.5 is South, and 0.75 is West.
--- Convert that to a unit vector where +x is East and +y is South.
-local function orientation_to_unit_vector(orientation)
-  -- Angle measured from East toward South, in radians.
-  local angle = (orientation - 0.25) / 1.00 * 2.00 * math.pi;
-  return {x = math.cos(angle), y = math.sin(angle)};
-end;
-
 -- Return a position that is 'distance' units in front of 'ent',
 -- taking accouot of its current orientation.
 local function pos_in_front_of(ent, distance)
   local orient_vec = orientation_to_unit_vector(ent.orientation);
   local displacement = multiply_vec(orient_vec, distance);
   return add_vec(ent.position, displacement);
-end;
-
--- Given a Factorio "orientation", normalize it to [0,1).
-local function normalize_orientation(o)
-  while o < 0 do
-    o = o + 1;
-  end;
-  while o >= 1 do
-    o = o - 1;
-  end;
-  return o;
-end;
-
--- Normalize radians to [-pi,pi).
-local function normalize_radians(r)
-  while r < -math.pi do
-    r = r + (math.pi * 2);
-  end;
-  while r >= math.pi do
-    r = r - (math.pi * 2);
-  end;
-  return r;
-end;
-
-local function orientation_to_radians(orientation)
-  return (orientation - 0.25) * 2 * math.pi;
-end;
-
--- Convert to radians in [-pi,pi] to orientation in [-0.25, 0.75].
-local function radians_to_orientation(radians)
-  return radians / (2 * math.pi) + 0.25;
-end;
-
-local function vector_to_orientation(v)
-  local angle = vector_to_angle(v);
-  local orientation = radians_to_orientation(angle);
-
-  -- Raise to [0,1].
-  orientation = normalize_orientation(orientation);
-
-  return orientation;
-end;
-
--- Number of table entries.  How is this not built in to Lua?
-local function table_size(t)
-  local ct = 0;
-  for _, _ in pairs(t) do
-    ct = ct + 1;
-  end;
-  return ct;
-end;
-
--- Get the velocity vector of a vehicle in meters (game units) per tick.
-local function vehicle_velocity(v)
-  local direction = orientation_to_unit_vector(v.orientation);
-  return multiply_vec(direction, v.speed);
 end;
 
 -- Get the name of some bullet ammo in the given inventory,
@@ -490,18 +398,6 @@ local function collision_avoidance(tick, vehicles, v)
   return cannot_turn, must_brake, cannot_accelerate;
 end;
 
-local riding_acceleration_string_table = {
-  [defines.riding.acceleration.accelerating] = "accelerating",
-  [defines.riding.acceleration.nothing] = "nothing",
-  [defines.riding.acceleration.braking] = "braking",
-  [defines.riding.acceleration.reversing] = "reversing",
-};
-local riding_direction_string_table = {
-  [defines.riding.direction.straight] = "straight",
-  [defines.riding.direction.left] = "left",
-  [defines.riding.direction.right] = "right",
-};
-
 local function drive_vehicles(tick_num)
   for force, vehicles in pairs(force_to_vehicles) do
     local commander_vehicle = find_commander_vehicle(vehicles);
@@ -681,17 +577,6 @@ script.on_event({defines.events.on_built_entity, defines.events.on_robot_built_e
     end;
   end
 );
-
--- Copy all items from 'source' to 'dest', returning the total number
--- of items copied.  This duplicates the items, so should only be done
--- when the source inventory is about to be destroyed.
-local function copy_inventory_from_to(source, dest)
-  local ret = 0
-  for name, count in pairs(source.get_contents()) do
-    ret = ret + dest.insert({name=name, count=count});
-  end;
-  return ret;
-end;
 
 script.on_event({defines.events.on_player_mined_entity},
   function(e)

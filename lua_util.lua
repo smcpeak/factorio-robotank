@@ -2,6 +2,8 @@
 -- General Lua utilities.
 
 
+-------------------------- Tables -----------------------
+
 -- The pairs of a table, ordered by key.
 -- https://www.lua.org/pil/19.3.html
 function ordered_pairs (t, f)
@@ -16,6 +18,15 @@ function ordered_pairs (t, f)
     end
   end
   return iter
+end;
+
+-- Number of table entries.  How is this not built in to Lua?
+function table_size(t)
+  local ct = 0;
+  for _, _ in pairs(t) do
+    ct = ct + 1;
+  end;
+  return ct;
 end;
 
 
@@ -70,6 +81,17 @@ function rotate_vec(v, radians)
     x = v.x * math.cos(radians) - v.y * math.sin(radians),
     y = v.x * math.sin(radians) + v.y * math.cos(radians),
   };
+end;
+
+-- Normalize radians to [-pi,pi).
+function normalize_radians(r)
+  while r < -math.pi do
+    r = r + (math.pi * 2);
+  end;
+  while r >= math.pi do
+    r = r - (math.pi * 2);
+  end;
+  return r;
 end;
 
 
