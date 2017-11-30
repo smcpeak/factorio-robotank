@@ -35,6 +35,7 @@ defines.riding.acceleration = {};
 defines.riding.acceleration.accelerating = 7;
 defines.riding.acceleration.braking = 8;
 defines.riding.acceleration.nothing = 9;
+defines.riding.acceleration.reversing = 13;
 
 defines.riding.direction = {};
 defines.riding.direction.left = 10;

@@ -2,10 +2,8 @@
 -- Actions that run while the user is playing the game.
 
 require "util"               -- table.deepcopy
+require "lua_util"           -- My utilties, mainly the vector operations.
 
-local function equal_vec(v1, v2)
-  return v1.x == v2.x and v1.y == v2.y;
-end;
 
 -- Given something that could be a string or an object with
 -- a name, yield it as a string.
@@ -191,40 +189,12 @@ local function orientation_to_unit_vector(orientation)
   return {x = math.cos(angle), y = math.sin(angle)};
 end;
 
--- Multiply a 2D vector by a scalar.
-local function multiply_vec(v, scalar)
-  return {x = v.x * scalar, y = v.y * scalar};
-end;
-
--- Add two 2D vectors.
-local function add_vec(v1, v2)
-  return { x = v1.x + v2.x, y = v1.y + v2.y };
-end;
-
+-- Return a position that is 'distance' units in front of 'ent',
+-- taking accouot of its current orientation.
 local function pos_in_front_of(ent, distance)
   local orient_vec = orientation_to_unit_vector(ent.orientation);
   local displacement = multiply_vec(orient_vec, distance);
   return add_vec(ent.position, displacement);
-end;
-
-local function mag_sq(v)
-  return v.x * v.x + v.y * v.y;
-end;
-
-local function magnitude(v)
-  return math.sqrt(mag_sq(v));
-end;
-
-local function normalize_vec(v)
-  if ((v.x == 0) and (v.y == 0)) then
-    return v;
-  else
-    return multiply_vec(v, 1.0 / magnitude(v));
-  end;
-end;
-
-local function subtract_vec(v1, v2)
-  return { x = v1.x - v2.x, y = v1.y - v2.y };
 end;
 
 -- Given a Factorio "orientation", normalize it to [0,1).
@@ -249,11 +219,6 @@ local function normalize_radians(r)
   return r;
 end;
 
-local function vector_to_angle(v)
-  -- Angle South of East, in radians.
-  return math.atan2(v.y, v.x);
-end;
-
 local function orientation_to_radians(orientation)
   return (orientation - 0.25) * 2 * math.pi;
 end;
@@ -273,21 +238,6 @@ local function vector_to_orientation(v)
   return orientation;
 end;
 
--- https://www.lua.org/pil/19.3.html
-local function ordered_pairs (t, f)
-  local a = {}
-  for n in pairs(t) do table.insert(a, n) end
-  table.sort(a, f)
-  local i = 0      -- iterator variable
-  local iter = function ()   -- iterator function
-    i = i + 1
-    if a[i] == nil then return nil
-    else return a[i], t[a[i]]
-    end
-  end
-  return iter
-end;
-
 -- Number of table entries.  How is this not built in to Lua?
 local function table_size(t)
   local ct = 0;
@@ -301,16 +251,6 @@ end;
 local function vehicle_velocity(v)
   local direction = orientation_to_unit_vector(v.orientation);
   return multiply_vec(direction, v.speed);
-end;
-
--- Rotate a vector by a given angle.  This works for the standard coordinate
--- system with +y up and counterclockwise angles, as well as the Factorio
--- coordinate system with +y down and clockwise angles.
-local function rotate_vec(v, radians)
-  return {
-    x = v.x * math.cos(radians) - v.y * math.sin(radians),
-    y = v.x * math.sin(radians) + v.y * math.cos(radians),
-  };
 end;
 
 -- Get the name of some bullet ammo in the given inventory,
@@ -947,26 +887,6 @@ function unit_tests()
   print("VehicleLeash unit tests passed");
 
 end;
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 -- EOF
