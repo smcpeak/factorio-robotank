@@ -1,0 +1,24 @@
+TODO list for RoboTank mod
+
+- Improve item names and descriptions
+- Remove defunct gunfire-entity
+- Use item.prototype in ammo loading code
+- Optimize collision detection to only run every other frame?
+- Better icon and name for the transmitter object
+- Sensible placement of transmitter in the crafting grid
+- Organize robotanks into squads
+- Limit the number of tanks in a squad
+  - Means saving some data persistently
+- Research robotanks and increases to the squad size limit
+- Put robotanks into idle mode for better performance when not active
+- Sensible recipes for the tanks and transmitter
+- Range limit on the transmitter
+- Detect and avoid running into the shore
+- Press key to arrange squad in a line?
+- Experiment on larger maps
+- Sticker on robotanks not in a squad?
+- Open gate when a robotank approaches
+
+
+
+EOF
