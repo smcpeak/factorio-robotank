@@ -26,11 +26,6 @@ transmitter_item.icons = {
   },
 };
 
--- Gunfire graphics and sound.
-local gunfire_entity = table.deepcopy(data.raw.explosion["explosion-hit"]);
-gunfire_entity.name = "gunfire-entity";
-gunfire_entity.sound = table.deepcopy(data.raw.gun["tank-machine-gun"].attack_parameters.sound);
-
 -- Recipe to allow one to create the robotank.
 local robotank_recipe = {
   type = "recipe",
@@ -149,7 +144,6 @@ robotank_turret_entity.preparing_animation = blank_layers;
 data:extend{
   transmitter_recipe,
   transmitter_item,
-  gunfire_entity,
   robotank_recipe,
   robotank_item,
   robotank_entity,
