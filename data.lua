@@ -47,6 +47,7 @@ local robotank_recipe = {
 local robotank_item = table.deepcopy(data.raw["item-with-entity-data"].tank);
 robotank_item.name = "robotank-item";
 robotank_item.place_result = "robotank-entity";
+robotank_item.stack_size = 5;    -- Like train cars, etc.
 robotank_item.icons = {
   {
     icon = "__base__/graphics/icons/tank.png",
