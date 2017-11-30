@@ -50,16 +50,14 @@ robotank_item.place_result = "robotank-entity";
 robotank_item.icons = {
   {
     icon = "__base__/graphics/icons/tank.png",
-  },
-  {
-    icon = "__base__/graphics/icons/iron-plate.png",
-    tint = {r=1, g=0, b=0, a=0.5},
+    tint = {r=0.7, g=0.7, b=1, a=1},
   },
 };
 
 -- World entity for the robotank.
 local robotank_entity = table.deepcopy(data.raw.car.tank);
 robotank_entity.name = "robotank-entity";
+robotank_entity.icons = robotank_item.icons;
 robotank_entity.minable = {
   mining_time = 1,
   result = "robotank-item",
@@ -68,7 +66,7 @@ robotank_entity.minable = {
 -- Make it a little blue so it is visually distinct from the
 -- normal tank.
 for _, layer in pairs(robotank_entity.animation.layers) do
-  layer.tint = {r=0.8, g=0.8, b=1, a=1};
+  layer.tint = {r=0.7, g=0.7, b=1, a=1};
 end;
 
 -- World entity for the robotank turret.  Conceptually, I want the tank
@@ -118,6 +116,11 @@ robotank_turret_entity.flags = {
   "not-on-map",             -- Do not draw the turret on the minimap.
   "not-repairable",         -- Bots cannot repair the turret (any damage is moved to the tank).
 };
+
+-- This affects what is shown when you hover the mouse over
+-- the alert for something taking damage.
+robotank_turret_entity.icons = robotank_item.icons;
+
 
 -- Remove all of the graphics associated with the turret since they
 -- overlay weirdly on the tank and aren't needed since the tank itself
