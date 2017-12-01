@@ -17,10 +17,6 @@ end);
 -- True once we have scanned the world for vehicles after loading.
 local found_vehicles = false;
 
--- When this is true, an invalid vehicle has been recently removed,
--- so we have to refresh the lists of nearby vehicles.
-local nearby_vehicles_requires_refresh = false;
-
 -- Map from force to its vehicles.  Each force's vehicles are a map
 -- from unit_number to its vehicle_controller object.
 local force_to_vehicles = {};
@@ -57,7 +53,8 @@ local function new_vehicle_controller(v)
 
     -- Array of other vehicles (on the same force) that are near
     -- enough to this one to be relevant for collision avoidance.
-    nearby_vehicles = {},
+    -- When this is nil, it needs to be recomputed.
+    nearby_vehicles = nil,
   };
 end;
 
@@ -151,6 +148,7 @@ end;
 -- Remove any vehicles (or turrets) that are in the vehicle table.  Entities
 -- become invalid due to being destroyed or mined.
 local function remove_invalid_vehicles()
+  local removed_vehicle = false;
   for force, vehicles in pairs(force_to_vehicles) do
     local num_vehicles = 0;
     for unit_number, controller in pairs(vehicles) do
@@ -161,7 +159,7 @@ local function remove_invalid_vehicles()
           log("Turret of vehicle " .. unit_number .. " destroyed, killing tank too.");
           controller.vehicle.destroy();
           vehicles[unit_number] = nil;
-          nearby_vehicles_requires_refresh = true;
+          removed_vehicle = true;
         else
           num_vehicles = num_vehicles + 1;
         end;
@@ -172,11 +170,20 @@ local function remove_invalid_vehicles()
           log("Removed turret from invalid vehicle.");
         end;
         vehicles[unit_number] = nil;
-        nearby_vehicles_requires_refresh = true;
+        removed_vehicle = true;
         log("Removed invalid vehicle " .. unit_number .. ".");
       end;
     end;
     --log("Force " .. force .. " has " .. num_vehicles .. " vehicles.");
+  end;
+  
+  -- If we removed anything, invalidate all controllers' nearby vehicles lists.
+  if (removed_vehicle) then
+    for force, vehicles in pairs(force_to_vehicles) do
+      for unit_number, controller in pairs(vehicles) do
+        controller.nearby_vehicles = nil;
+      end;
+    end;
   end;
 end;
 
@@ -267,7 +274,8 @@ local function maybe_load_robotank_turret_ammo(controller)
   end;
 end;
 
--- Do per-tick updates of robotanks.
+-- Do per-tick updates of robotanks that only involve one robotank
+-- at a time, i.e., that don't involve driving.
 local function update_robotanks(tick)
   for force, vehicles in pairs(force_to_vehicles) do
     for unit_number, controller in pairs(vehicles) do
@@ -393,7 +401,7 @@ local function collision_avoidance(tick, vehicles, controller)
 
   -- Periodically refresh the list of other vehicles near enough
   -- to this one to be relevant.
-  if (nearby_vehicles_requires_refresh or (tick % 60 == 0)) then
+  if (controller.nearby_vehicles == nil or (tick % 60 == 0)) then
     controller.nearby_vehicles = {};
     for _, other in pairs(vehicles) do
       if (other.vehicle ~= v) then
@@ -775,10 +783,6 @@ script.on_event(defines.events.on_tick, function(e)
   -- of the robotanks when I turn left and right.  So, I'll do the
   -- overall routine on every tick, but perhaps do some parts less often.
   drive_vehicles(e.tick);
-
-  -- Clear this flag only at the end of the tick so that all of the
-  -- lists get refreshed.
-  nearby_vehicles_requires_refresh = false;
 end);
 
 -- On built entity: add to tables.
