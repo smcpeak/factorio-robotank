@@ -582,20 +582,25 @@ local function drive_vehicles(tick_num)
     local commander_controller = force_to_commander_controller[force];
     if (commander_controller == nil) then
       --log("Force " .. force .. " does not have a commander vehicle.");
-      for unit_number, controller in pairs(vehicles) do
-        if (controller.vehicle.name == "robotank-entity") then
-          -- Don't let the vehicles run away when there is no commander.
-          controller.vehicle.riding_state = {
-            acceleration =
-              ((controller.vehicle.speed ~= 0) and
-                 defines.riding.acceleration.braking or
-                 defines.riding.acceleration.nothing),
-            direction = defines.riding.direction.straight,
-          };
 
-          -- Also clear the formation position so when a commander
-          -- arrives it will be reinitialized.
-          controller.formation_position = nil;
+      -- Do some housekeeping, but not on every tick because just iterating
+      -- through the vehicles is a significant cost.
+      if (tick_num % 60 == 0) then
+        for unit_number, controller in pairs(vehicles) do
+          if (controller.vehicle.name == "robotank-entity") then
+            -- Don't let the vehicles run away when there is no commander.
+            controller.vehicle.riding_state = {
+              acceleration =
+                ((controller.vehicle.speed ~= 0) and
+                   defines.riding.acceleration.braking or
+                   defines.riding.acceleration.nothing),
+              direction = defines.riding.direction.straight,
+            };
+
+            -- Also clear the formation position so when a commander
+            -- arrives it will be reinitialized.
+            controller.formation_position = nil;
+          end;
         end;
       end;
     else

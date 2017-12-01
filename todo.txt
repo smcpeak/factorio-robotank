@@ -1,6 +1,6 @@
 TODO list for RoboTank mod
 
-- When no commander, optimize the stop logic
+- Consistently use 'tick' instead of 'tick_num'
 - Questionable behavior when multiple transmitters present
 - Optimize collision detection to only run every other frame?
 - Organize robotanks into squads
