@@ -317,13 +317,6 @@ end;
 -- Do per-tick updates of robotanks that only involve one robotank
 -- at a time, i.e., that don't involve driving.
 local function update_robotanks(tick)
-  -- With 40 tanks, update_robotanks takes about 250us.  That is enough
-  -- that I want to limit its rate, which doesn't have any major adverse
-  -- consequences.
-  if (tick % 5 ~= 0) then
-    return;
-  end;
-
   for force, vehicles in pairs(force_to_vehicles) do
     for unit_number, controller in pairs(vehicles) do
       if (controller.turret ~= nil) then
