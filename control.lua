@@ -21,6 +21,13 @@ local found_vehicles = false;
 -- from unit_number to its vehicle_controller object.
 local force_to_vehicles = {};
 
+-- Map from force to its commander vehicle controller, if there is
+-- such a commander.
+local force_to_commander_controller = {};
+
+-- When this is true, the preceding table needs to be refreshed.
+local refresh_force_to_commander_controller = true;
+
 -- Control state for a vehicle.  All vehicles have control states,
 -- including the commander vehicle (if any).
 local function new_vehicle_controller(v)
@@ -172,7 +179,7 @@ local function remove_invalid_vehicles()
       end;
     end;
   end;
-  
+
   -- If we removed anything, invalidate all controllers' nearby vehicles lists.
   if (removed_vehicle) then
     for force, vehicles in pairs(force_to_vehicles) do
@@ -180,11 +187,15 @@ local function remove_invalid_vehicles()
         controller.nearby_vehicles = nil;
       end;
     end;
+
+    -- Also refresh the commander table.
+    refresh_force_to_commander_controller = true;
   end;
 end;
 
--- Find the vehicle among 'vehicles' that is commanding them, if any.
-local function find_commander_vehicle(vehicles)
+-- Find the vehicle controller among 'vehicles' that is commanding them,
+-- if any.
+local function find_commander_controller(vehicles)
   for unit_number, controller in pairs(vehicles) do
     local v = controller.vehicle;
     -- A robotank cannot be a commander.
@@ -193,11 +204,37 @@ local function find_commander_vehicle(vehicles)
       local inv = v.get_inventory(defines.inventory.car_trunk);
       if (inv and inv.get_item_count("robotank-transmitter-item") > 0) then
         --log("Commander vehicle is unit " .. v.unit_number);
-        return v;
+        return controller;
       end;
     end;
   end;
   return nil;
+end;
+
+-- Scan all vehicles to locate the commander for each force, and update
+-- the 'force_to_commander_controller' table accordingly.
+local function update_commanders()
+  -- Remember the old commander table so I can detect changes.  But I must
+  -- be careful since its entries might have references to invalid objects.
+  local old_comm = force_to_commander_controller;
+
+  -- Rebuild the table.
+  force_to_commander_controller = {};
+  refresh_force_to_commander_controller = false;
+
+  for force, vehicles in pairs(force_to_vehicles) do
+    local cc = find_commander_controller(vehicles);
+    force_to_commander_controller[force] = cc;
+    if (cc ~= old_comm[force]) then
+      if (cc == nil) then
+        log("Force " .. force .. " lost its commander.");
+      elseif (old_comm[force] == nil) then
+        log("Force " .. force .. " gained a commander: unit " .. cc.vehicle.unit_number);
+      else
+        log("Force " .. force .. " changed commander to unit " .. cc.vehicle.unit_number);
+      end;
+    end;
+  end;
 end;
 
 -- Return a position that is 'distance' units in front of 'ent',
@@ -542,8 +579,8 @@ end;
 -- of what the player can do with the WASD keys.
 local function drive_vehicles(tick_num)
   for force, vehicles in pairs(force_to_vehicles) do
-    local commander_vehicle = find_commander_vehicle(vehicles);
-    if (commander_vehicle == nil) then
+    local commander_controller = force_to_commander_controller[force];
+    if (commander_controller == nil) then
       --log("Force " .. force .. " does not have a commander vehicle.");
       for unit_number, controller in pairs(vehicles) do
         if (controller.vehicle.name == "robotank-entity") then
@@ -562,6 +599,7 @@ local function drive_vehicles(tick_num)
         end;
       end;
     else
+      local commander_vehicle = commander_controller.vehicle;
       local commander_velocity = vehicle_velocity(commander_vehicle);
 
       for unit_number, controller in pairs(vehicles) do
@@ -781,6 +819,10 @@ script.on_event(defines.events.on_tick, function(e)
   end;
 
   remove_invalid_vehicles();
+
+  if (refresh_force_to_commander_controller or (e.tick % 60 == 0)) then
+    update_commanders();
+  end;
 
   update_robotanks(e.tick)
 

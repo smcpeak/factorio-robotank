@@ -1,5 +1,7 @@
 TODO list for RoboTank mod
 
+- When no commander, optimize the stop logic
+- Questionable behavior when multiple transmitters present
 - Optimize collision detection to only run every other frame?
 - Organize robotanks into squads
 - Limit the number of tanks in a squad
