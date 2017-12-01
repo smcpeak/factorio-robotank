@@ -145,12 +145,11 @@ local function find_vehicles()
   end;
 end;
 
--- Remove any vehicles (or turrets) that are in the vehicle table.  Entities
--- become invalid due to being destroyed or mined.
+-- Remove any invalid vehicles (or turrets) that are in the vehicle table.
+-- Entities become invalid due to being destroyed or mined.
 local function remove_invalid_vehicles()
   local removed_vehicle = false;
   for force, vehicles in pairs(force_to_vehicles) do
-    local num_vehicles = 0;
     for unit_number, controller in pairs(vehicles) do
       if (controller.vehicle.valid) then
         if (controller.turret ~= nil and
@@ -160,8 +159,6 @@ local function remove_invalid_vehicles()
           controller.vehicle.destroy();
           vehicles[unit_number] = nil;
           removed_vehicle = true;
-        else
-          num_vehicles = num_vehicles + 1;
         end;
       else
         if (controller.turret ~= nil and controller.turret.valid) then
@@ -174,7 +171,6 @@ local function remove_invalid_vehicles()
         log("Removed invalid vehicle " .. unit_number .. ".");
       end;
     end;
-    --log("Force " .. force .. " has " .. num_vehicles .. " vehicles.");
   end;
   
   -- If we removed anything, invalidate all controllers' nearby vehicles lists.
@@ -228,7 +224,7 @@ end;
 local function maybe_load_robotank_turret_ammo(controller)
   -- See if the turret needs another ammo magazine.
   local turret_inv = controller.turret.get_inventory(defines.inventory.turret_ammo);
-  if (not turret_inv) then
+  if (turret_inv == nil) then
     log("Failed to get turret inventory!");
     return;
   end;
@@ -258,8 +254,12 @@ local function maybe_load_robotank_turret_ammo(controller)
     end;
 
     if (ammo_type) then
-      -- Move up to 10 ammo magazines into the turret.
-      local got = car_inv.remove{name=ammo_type, count=10};
+      -- Move up to 50 ammo magazines into the turret.  I originally
+      -- had this as 10 to match the usual way that inserters load
+      -- turrets, but then I reduced the frequency of the reload check
+      -- to once per 5 ticks, so I want a correspondingly bigger buffer
+      -- here.
+      local got = car_inv.remove{name=ammo_type, count=50};
       if (got < 1) then
         log("Failed to remove ammo from trunk!");
       else
@@ -277,6 +277,13 @@ end;
 -- Do per-tick updates of robotanks that only involve one robotank
 -- at a time, i.e., that don't involve driving.
 local function update_robotanks(tick)
+  -- With 40 tanks, update_robotanks takes about 250us.  That is enough
+  -- that I want to limit its rate, which doesn't have any major adverse
+  -- consequences.
+  if (tick % 5 ~= 0) then
+    return;
+  end;
+
   for force, vehicles in pairs(force_to_vehicles) do
     for unit_number, controller in pairs(vehicles) do
       if (controller.vehicle.name == "robotank-entity") then
