@@ -42,9 +42,6 @@ local function new_vehicle_controller(v)
     -- relative to the commander, when the commander is facing East.
     formation_position = nil;
 
-    -- Vehicle's position during the previous tick.
-    previous_position = v.position,
-
     -- When not nil, this records the tick number when the vehicle
     -- became stuck, prevented from going the way it wants to by
     -- some obstacles.  If we are stuck long enough, the vehicle
@@ -740,8 +737,7 @@ local function update_robotank_force_on_tick(tick, force, vehicles)
 
           if (not removed_vehicle) then
             -- Keep the turret centered on the tank.
-            if (not equal_vec(controller.vehicle.position, controller.previous_position)) then
-              controller.previous_position = table.deepcopy(controller.vehicle.position);
+            if (controller.vehicle.speed > 0) then
               if (not controller.turret.teleport(controller.vehicle.position)) then
                 log("Failed to teleport turret!");
               end;
