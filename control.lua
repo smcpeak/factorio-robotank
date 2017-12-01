@@ -705,6 +705,22 @@ end;
 -- simply iterating through the tables is fairly high, so for speed
 -- I combine everything I can into one iteration.
 local function update_robotank_force_on_tick(tick, force, vehicles)
+  -- Check if the force has a commander.  We need to be careful here
+  -- because the commander might be invalid.  This is used to throttle
+  -- some operations when there is no commander, so it's fine if we
+  -- think there is no commander but actually one just joined.
+  local has_commander = (force_to_commander_controller[force] ~= nil);
+
+  --- Some useful tick frequencies.
+  local tick_5 = ((tick % 5) == 0);
+  local tick_60 = ((tick % 60) == 0);
+
+  -- True if we should do certain checks.  Reduce frequency when there
+  -- is no commander.
+  local check_turret_damage = (has_commander and tick_5 or tick_60);
+  local check_speed = (has_commander or tick_5);
+  local check_ammo = (has_commander and tick_5 or tick_60);
+
   -- Scan for invalid vehicles or turrets.  They become invalid when
   -- they are mined or destroyed.
   local removed_vehicle = false;
@@ -720,31 +736,37 @@ local function update_robotank_force_on_tick(tick, force, vehicles)
         else
           -- Transfer non-fatal damage sustained by the turret to the tank.
           -- The max health must match what is in data.lua.
-          local damage = 1000 - controller.turret.health;
-          if (damage > 0) then
-            if (controller.vehicle.health <= damage) then
-              log("Fatal damage being transferred to robotank " .. unit_number .. ".");
-              controller.turret.destroy();
-              controller.vehicle.die();      -- Make an explosion.
-              controller.turret = nil;
-              vehicles[unit_number] = nil;
-              removed_vehicle = true;
-            else
-              controller.vehicle.health = controller.vehicle.health - damage;
-              controller.turret.health = 1000;
+          if (check_turret_damage) then
+            local damage = 1000 - controller.turret.health;
+            if (damage > 0) then
+              if (controller.vehicle.health <= damage) then
+                log("Fatal damage being transferred to robotank " .. unit_number .. ".");
+                controller.turret.destroy();
+                controller.vehicle.die();      -- Make an explosion.
+                controller.turret = nil;
+                vehicles[unit_number] = nil;
+                removed_vehicle = true;
+              else
+                controller.vehicle.health = controller.vehicle.health - damage;
+                controller.turret.health = 1000;
+              end;
             end;
           end;
 
           if (not removed_vehicle) then
-            -- Keep the turret centered on the tank.
-            if (controller.vehicle.speed > 0) then
+            -- Keep the turret centered on the tank.  If this is not done
+            -- on every tick then the ammo overlay shown when detailed
+            -- view is on will jiggle as the tank moves.
+            if (check_speed and controller.vehicle.speed > 0) then
               if (not controller.turret.teleport(controller.vehicle.position)) then
                 log("Failed to teleport turret!");
               end;
             end;
 
             -- Replenish its ammo.
-            maybe_load_robotank_turret_ammo(controller);
+            if (check_ammo) then
+              maybe_load_robotank_turret_ammo(controller);
+            end;
           end;
         end;
       end;
@@ -771,7 +793,7 @@ local function update_robotank_force_on_tick(tick, force, vehicles)
   end;
 
   -- Refresh the commander periodically, or whenever a vehicle is removed.
-  if (removed_vehicle or (tick % 60 == 0)) then
+  if (removed_vehicle or tick_60) then
     -- Get the old commander so I can detect changes.
     local old_cc = force_to_commander_controller[force];
 
