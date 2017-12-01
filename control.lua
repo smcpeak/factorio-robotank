@@ -577,7 +577,7 @@ end;
 -- Tell all the robotank vehicles how to drive themselves.  This means
 -- setting their 'riding_state', which is basically programmatic control
 -- of what the player can do with the WASD keys.
-local function drive_vehicles(tick_num)
+local function drive_vehicles(tick)
   for force, vehicles in pairs(force_to_vehicles) do
     local commander_controller = force_to_commander_controller[force];
     if (commander_controller == nil) then
@@ -585,7 +585,7 @@ local function drive_vehicles(tick_num)
 
       -- Do some housekeeping, but not on every tick because just iterating
       -- through the vehicles is a significant cost.
-      if (tick_num % 60 == 0) then
+      if (tick % 60 == 0) then
         for unit_number, controller in pairs(vehicles) do
           if (controller.vehicle.name == "robotank-entity") then
             -- Don't let the vehicles run away when there is no commander.
@@ -709,7 +709,7 @@ local function drive_vehicles(tick_num)
           -- Having decided what we would want to do in the absence of
           -- obstacles, restrict behavior in order to avoid collisions.
           local cannot_turn, must_brake, cannot_accelerate =
-            collision_avoidance(tick_num, vehicles, controller);
+            collision_avoidance(tick, vehicles, controller);
 
           -- Are we reversing out of a stuck position?  That overrides the
           -- decisions made above.
@@ -717,7 +717,7 @@ local function drive_vehicles(tick_num)
           local stopping = false;
           if (controller.reversing_until ~= nil) then
             reversing = true;
-            if (controller.reversing_until > tick_num) then
+            if (controller.reversing_until > tick) then
               -- Continue reversing.
             else
               if (v.speed ~= 0) then
@@ -732,7 +732,7 @@ local function drive_vehicles(tick_num)
           end;
 
           --[[
-          if (tick_num % 60 == 0) then
+          if (tick % 60 == 0) then
             log("Vehicle " .. unit_number ..
                 ": cannot_turn=" .. serpent.line(cannot_turn) ..
                 " must_brake=" .. serpent.line(must_brake) ..
@@ -752,15 +752,15 @@ local function drive_vehicles(tick_num)
               -- Just became stuck, wait a bit to see if things clear up.
               -- We might not even really be stuck; speed sometimes drops
               -- quite low even when cruising.
-              controller.stuck_since = tick_num;
-            elseif (controller.stuck_since + 300 <= tick_num) then
+              controller.stuck_since = tick;
+            elseif (controller.stuck_since + 300 <= tick) then
               -- Have been stuck for a while.  Periodically check if we
               -- can safely reverse out of here.
-              if (tick_num % 60 == 0) then
-                if (can_reverse(tick_num, vehicles, controller)) then
+              if (tick % 60 == 0) then
+                if (can_reverse(tick, vehicles, controller)) then
                   log("Vehicle " .. unit_number .. " is stuck, trying to reverse out of it.");
                   controller.stuck_since = nil;
-                  controller.reversing_until = tick_num + 60;
+                  controller.reversing_until = tick + 60;
                   reversing = true;
                 else
                   log("Vehicle " .. unit_number .. " is stuck and cannot reverse.");
@@ -801,7 +801,7 @@ local function drive_vehicles(tick_num)
           };
 
           --[[
-          if (tick_num % 60 == 0) then
+          if (tick % 60 == 0) then
             local pedal_string = riding_acceleration_string_table[pedal];
             local turn_string = riding_direction_string_table[turn];
             log("Vehicle " .. unit_number ..
