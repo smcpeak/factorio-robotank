@@ -742,6 +742,7 @@ local function update_robotank_force_on_tick(tick, force, vehicles)
   --- Some useful tick frequencies.
   local tick_1 = true;
   local tick_5 = ((tick % 5) == 0);
+  local tick_10 = ((tick % 10) == 0);
   local tick_60 = ((tick % 60) == 0);
 
   -- Refresh the commander periodically.
@@ -756,7 +757,7 @@ local function update_robotank_force_on_tick(tick, force, vehicles)
   -- True if we should do certain checks.  Reduce frequency when there
   -- is no commander.
   local check_turret_damage = (has_commander and tick_5 or tick_60);
-  local check_speed =         (has_commander and tick_1 or tick_5);
+  local check_speed =         (has_commander and tick_1 or tick_10);
   local check_ammo =          (has_commander and tick_5 or tick_60);
   local check_driving =       (has_commander and tick_1 or false);
   if (not (check_turret_damage or check_speed or check_ammo or check_driving)) then
@@ -802,7 +803,12 @@ local function update_robotank_force_on_tick(tick, force, vehicles)
       if (not removed_vehicle) then
         -- Keep the turret centered on the tank.  If this is not done
         -- on every tick then the ammo overlay shown when detailed
-        -- view is on will jiggle as the tank moves.
+        -- view is on will jiggle as the tank moves.  In addition, there
+        -- is a risk of not moving the turret before the tank completely
+        -- stops, for example because it hits a wall.  That said, when
+        -- there is no commander, I do it less frequently and simply
+        -- accept the problems since just iterating and checking the
+        -- speed has measurable cost.
         if (check_speed and controller.vehicle.speed ~= 0) then
           if (not controller.turret.teleport(controller.vehicle.position)) then
             log("Failed to teleport turret!");
