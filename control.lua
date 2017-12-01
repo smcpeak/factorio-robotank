@@ -459,243 +459,277 @@ local function formation_position_to_world_position(commander_vehicle, formation
 end;
 
 
--- Tell all the robotank vehicles in this force how to drive themselves.
--- This means setting their 'riding_state', which is basically programmatic
--- control of what the player can do with the WASD keys.
-local function drive_vehicles(tick, force, vehicles)
-  local commander_controller = force_to_commander_controller[force];
-  if (commander_controller == nil) then
-    --log("Force " .. force .. " does not have a commander vehicle.");
+-- Tell the robotank vehicle associated with 'controller' how to drive.
+-- This means setting its 'riding_state', which is basically programmatic
+-- control of what the player can do with the WASD keys.  This is only
+-- called when we know there is a commander.
+local function drive_vehicle(tick, vehicles, commander_vehicle,
+                             commander_velocity, unit_number, controller)
+  local v = controller.vehicle;
+  if (controller.formation_position == nil) then
+    -- This robotank is joining the formation.
+    controller.formation_position =
+      world_position_to_formation_position(commander_vehicle, v);
+  end;
 
-    -- Do some housekeeping, but not on every tick because just iterating
-    -- through the vehicles is a significant cost.
-    if (tick % 60 == 0) then
-      for unit_number, controller in pairs(vehicles) do
-        if (controller.vehicle.name == "robotank-entity") then
-          -- Don't let the vehicles run away when there is no commander.
-          controller.vehicle.riding_state = {
-            acceleration =
-              ((controller.vehicle.speed ~= 0) and
-                 defines.riding.acceleration.braking or
-                 defines.riding.acceleration.nothing),
-            direction = defines.riding.direction.straight,
-          };
+  -- Where does this vehicle want to be?
+  local desired_position =
+    formation_position_to_world_position(commander_vehicle, controller.formation_position);
 
-          -- Also clear the formation position so when a commander
-          -- arrives it will be reinitialized.
-          controller.formation_position = nil;
+  -- Calculate the displacement between where we are now and where
+  -- we want to be.
+  local displacement = subtract_vec(desired_position, v.position);
+
+  -- The overall goal here is to decide how to accelerate and turn.
+  -- We will put the decision into these two variables.
+  local pedal = defines.riding.acceleration.nothing;
+  local turn = defines.riding.direction.straight;
+
+  -- Current vehicle velocity.
+  local cur_velocity = vehicle_velocity(v);
+
+  -- What will the displacement be if we stand still and the commander
+  -- maintains speed and direction?
+  local next_disp = add_vec(displacement, commander_velocity);
+
+  -- What will be the displacement in one tick if we maintain speed
+  -- and direction?
+  local projected_straight_disp = subtract_vec(next_disp, cur_velocity);
+  local projected_straight_dist = magnitude(projected_straight_disp);
+  if (projected_straight_dist < 0.1) then
+    -- We are or will be close to the target position.  Is the commander
+    -- stopped?  (The test here is not for commander speed is zero because
+    -- if the player jumps out and lets the vehicle coast to a stop, it
+    -- takes about a minute for friction to get the speed to zero, even
+    -- though all visible movement stops in a few seconds.)
+    if ((math.abs(commander_vehicle.speed) < 1e-3) and v.speed > 0) then
+      -- Hack: Commander is stopped, we should stop too.  (I would prefer that
+      -- this behavior emerge naturally without making a special case.  But as
+      -- things stand, without this, the tanks will slowly circle their target
+      -- endlessly if I do not force them to stop.)
+      pedal = defines.riding.acceleration.braking;
+    else
+      -- Just coast straight.  Among the situations this applies is when
+      -- the tank is in its intended spot in the formation, moving at the
+      -- same speed as the commander.
+    end;
+
+    -- Since we're basically at our destination, clear the stuck
+    -- avoidance variables since we're not going down the other code
+    -- path for a while now.
+    controller.stuck_since = nil;
+    controller.reversing_until = nil;
+
+  else
+    -- Compute orientation in [0,1] that will reduce displacement.
+    local desired_orientation = vector_to_orientation(projected_straight_disp);
+
+    -- Difference with current orientation.
+    local diff_orient = v.orientation - desired_orientation;
+    if (diff_orient > 0.5) then
+      diff_orient = diff_orient - 1;
+    elseif (diff_orient < -0.5) then
+      diff_orient = diff_orient + 1;
+    end;
+
+    if (diff_orient > 0.1) then
+      -- Coast and turn left.
+      turn = defines.riding.direction.left;
+    elseif (diff_orient < -0.1) then
+      -- Coast and turn right.
+      turn = defines.riding.direction.right;
+    else
+      -- Turn if we're not quite in line, then decide whether
+      -- to accelerate.
+      if (diff_orient > 0.01) then
+        turn = defines.riding.direction.left;
+      elseif (diff_orient < -0.01) then
+        turn = defines.riding.direction.right;
+      end;
+
+      -- Desired speed as a function of projected distance to target.
+      -- This has a quadratic component since stopping distance does
+      -- as well (although I do not explicitly calculate that).  The
+      -- coefficients were determined through crude experimentation.
+      local desired_speed =
+        projected_straight_dist * 0.01 +
+        projected_straight_dist * projected_straight_dist * 0.001;
+
+      if (desired_speed > v.speed) then
+        pedal = defines.riding.acceleration.accelerating;
+      elseif (desired_speed < v.speed - 0.001) then
+        pedal = defines.riding.acceleration.braking;
+      end;
+    end;
+  end;
+
+  -- Having decided what we would want to do in the absence of
+  -- obstacles, restrict behavior in order to avoid collisions.
+  local cannot_turn, must_brake, cannot_accelerate =
+    collision_avoidance(tick, vehicles, controller);
+
+  -- Are we reversing out of a stuck position?  That overrides the
+  -- decisions made above.
+  local reversing = false;
+  local stopping = false;
+  if (controller.reversing_until ~= nil) then
+    reversing = true;
+    if (controller.reversing_until > tick) then
+      -- Continue reversing.
+    else
+      if (v.speed ~= 0) then
+        -- Brake until we are stopped.
+        stopping = true;
+      else
+        -- We have come to a stop, we can leave this state.
+        log("Vehicle " .. unit_number .. " finished reversing.");
+        controller.reversing_until = nil;
+      end;
+    end;
+  end;
+
+  --[[
+  if (tick % 60 == 0) then
+    log("Vehicle " .. unit_number ..
+        ": cannot_turn=" .. serpent.line(cannot_turn) ..
+        " must_brake=" .. serpent.line(must_brake) ..
+        " cannot_accelerate=" .. serpent.line(cannot_accelerate) ..
+        " reversing=" .. serpent.line(reversing) ..
+        " stopping=" .. serpent.line(stopping));
+  end;
+  --]]
+
+  -- Are we stuck?  This tests for low speed rather than zero speed
+  -- because when a tank is stuck against water, it has a speed of
+  -- about 0.003 once every 300 ticks (coincidentally the same as my
+  -- stuck timer duration), even though it is not moving.  I think that
+  -- is an artifact of Factorio collision mechanics.
+  if (math.abs(v.speed) < 0.005 and not reversing) then
+    if (controller.stuck_since == nil) then
+      -- Just became stuck, wait a bit to see if things clear up.
+      -- We might not even really be stuck; speed sometimes drops
+      -- quite low even when cruising.
+      controller.stuck_since = tick;
+    elseif (controller.stuck_since + 300 <= tick) then
+      -- Have been stuck for a while.  Periodically check if we
+      -- can safely reverse out of here.
+      if (tick % 60 == 0) then
+        if (can_reverse(tick, vehicles, controller)) then
+          log("Vehicle " .. unit_number .. " is stuck, trying to reverse out of it.");
+          controller.stuck_since = nil;
+          controller.reversing_until = tick + 60;
+          reversing = true;
+        else
+          log("Vehicle " .. unit_number .. " is stuck and cannot reverse.");
         end;
       end;
     end;
   else
-    local commander_vehicle = commander_controller.vehicle;
-    local commander_velocity = vehicle_velocity(commander_vehicle);
+    -- Not stuck, reset stuck timer.
+    controller.stuck_since = nil;
+  end;
 
-    for unit_number, controller in pairs(vehicles) do
-      local v = controller.vehicle;
-      if (v.name == "robotank-entity") then
-        if (controller.formation_position == nil) then
-          -- This robotank is joining the formation.
-          controller.formation_position =
-            world_position_to_formation_position(commander_vehicle, controller.vehicle);
-        end;
-
-        -- Where does this vehicle want to be?
-        local desired_position =
-          formation_position_to_world_position(commander_vehicle, controller.formation_position);
-
-        -- Calculate the displacement between where we are now and where
-        -- we want to be.
-        local displacement = subtract_vec(desired_position, v.position);
-
-        -- Goal here is to decide how to accelerate and turn.
-        local pedal = defines.riding.acceleration.nothing;
-        local turn = defines.riding.direction.straight;
-
-        -- Current vehicle velocity.
-        local cur_velocity = vehicle_velocity(v);
-
-        -- What will the displacement be if we stand still and the commander
-        -- maintains speed and direction?
-        local next_disp = add_vec(displacement, commander_velocity);
-
-        -- What will be the displacement in one tick if we maintain speed
-        -- and direction?
-        local projected_straight_disp = subtract_vec(next_disp, cur_velocity);
-        local projected_straight_dist = magnitude(projected_straight_disp);
-        if (projected_straight_dist < 0.1) then
-          -- We are or will be close to the target position.  Is the commander
-          -- stopped?  (The test here is not for commander speed is zero because
-          -- if the player jumps out and lets the vehicle coast to a stop, it
-          -- takes about a minute for friction to get the speed to zero, even
-          -- though all visible movement stops in a few seconds.)
-          if ((math.abs(commander_vehicle.speed) < 1e-3) and v.speed > 0) then
-            -- Hack: Commander is stopped, we should stop too.  (I would prefer that
-            -- this behavior emerge naturally without making a special case.  But as
-            -- things stand, without this, the tanks will slowly circle their target
-            -- endlessly if I do not force them to stop.)
-            pedal = defines.riding.acceleration.braking;
-          else
-            -- Just coast straight.  Among the situations this applies is when
-            -- the tank is in its intended spot in the formation, moving at the
-            -- same speed as the commander.
-          end;
-
-          -- Since we're basically at our destination, clear the stuck
-          -- avoidance variables since we're not going down the other code
-          -- path for a while now.
-          controller.stuck_since = nil;
-          controller.reversing_until = nil;
-
-        else
-          -- Compute orientation in [0,1] that will reduce displacement.
-          local desired_orientation = vector_to_orientation(projected_straight_disp);
-
-          -- Difference with current orientation.
-          local diff_orient = v.orientation - desired_orientation;
-          if (diff_orient > 0.5) then
-            diff_orient = diff_orient - 1;
-          elseif (diff_orient < -0.5) then
-            diff_orient = diff_orient + 1;
-          end;
-
-          if (diff_orient > 0.1) then
-            -- Coast and turn left.
-            turn = defines.riding.direction.left;
-          elseif (diff_orient < -0.1) then
-            -- Coast and turn right.
-            turn = defines.riding.direction.right;
-          else
-            -- Turn if we're not quite in line, then decide whether
-            -- to accelerate.
-            if (diff_orient > 0.01) then
-              turn = defines.riding.direction.left;
-            elseif (diff_orient < -0.01) then
-              turn = defines.riding.direction.right;
-            end;
-
-            -- Desired speed as a function of projected distance to target.
-            -- This has a quadratic component since stopping distance does
-            -- as well (although I do not explicitly calculate that).  The
-            -- coefficients were determined through crude experimentation.
-            local desired_speed =
-              projected_straight_dist * 0.01 +
-              projected_straight_dist * projected_straight_dist * 0.001;
-
-            if (desired_speed > v.speed) then
-              pedal = defines.riding.acceleration.accelerating;
-            elseif (desired_speed < v.speed - 0.001) then
-              pedal = defines.riding.acceleration.braking;
-            end;
-          end;
-        end;
-
-        -- Having decided what we would want to do in the absence of
-        -- obstacles, restrict behavior in order to avoid collisions.
-        local cannot_turn, must_brake, cannot_accelerate =
-          collision_avoidance(tick, vehicles, controller);
-
-        -- Are we reversing out of a stuck position?  That overrides the
-        -- decisions made above.
-        local reversing = false;
-        local stopping = false;
-        if (controller.reversing_until ~= nil) then
-          reversing = true;
-          if (controller.reversing_until > tick) then
-            -- Continue reversing.
-          else
-            if (v.speed ~= 0) then
-              -- Brake until we are stopped.
-              stopping = true;
-            else
-              -- We have come to a stop, we can leave this state.
-              log("Vehicle " .. unit_number .. " finished reversing.");
-              controller.reversing_until = nil;
-            end;
-          end;
-        end;
-
-        --[[
-        if (tick % 60 == 0) then
-          log("Vehicle " .. unit_number ..
-              ": cannot_turn=" .. serpent.line(cannot_turn) ..
-              " must_brake=" .. serpent.line(must_brake) ..
-              " cannot_accelerate=" .. serpent.line(cannot_accelerate) ..
-              " reversing=" .. serpent.line(reversing) ..
-              " stopping=" .. serpent.line(stopping));
-        end;
-        --]]
-
-        -- Are we stuck?  This tests for low speed rather than zero speed
-        -- because when a tank is stuck against water, it has a speed of
-        -- about 0.003 once every 300 ticks (coincidentally the same as my
-        -- stuck timer duration), even though it is not moving.  I think that
-        -- is an artifact of Factorio collision mechanics.
-        if (math.abs(v.speed) < 0.005 and not reversing) then
-          if (controller.stuck_since == nil) then
-            -- Just became stuck, wait a bit to see if things clear up.
-            -- We might not even really be stuck; speed sometimes drops
-            -- quite low even when cruising.
-            controller.stuck_since = tick;
-          elseif (controller.stuck_since + 300 <= tick) then
-            -- Have been stuck for a while.  Periodically check if we
-            -- can safely reverse out of here.
-            if (tick % 60 == 0) then
-              if (can_reverse(tick, vehicles, controller)) then
-                log("Vehicle " .. unit_number .. " is stuck, trying to reverse out of it.");
-                controller.stuck_since = nil;
-                controller.reversing_until = tick + 60;
-                reversing = true;
-              else
-                log("Vehicle " .. unit_number .. " is stuck and cannot reverse.");
-              end;
-            end;
-          end;
-        else
-          -- Not stuck, reset stuck timer.
-          controller.stuck_since = nil;
-        end;
-
-        -- Apply the collision and stuck avoidance flags to the driving
-        -- controls, overriding the ordinary navigation decisions.
-        if (reversing) then
-          turn = defines.riding.direction.straight;
-          if (stopping) then
-            pedal = defines.riding.acceleration.braking;
-          else
-            pedal = defines.riding.acceleration.reversing;
-          end;
-
-        else
-          if (must_brake) then
-            pedal = defines.riding.acceleration.braking;
-          elseif (cannot_accelerate and pedal == defines.riding.acceleration.accelerating) then
-            pedal = defines.riding.acceleration.nothing;
-          end;
-
-          if (cannot_turn) then
-            turn = defines.riding.direction.straight;
-          end;
-        end;
-
-        -- Apply the desired controls to the vehicle.
-        v.riding_state = {
-          acceleration = pedal,
-          direction = turn,
-        };
-
-        --[[
-        if (tick % 60 == 0) then
-          local pedal_string = riding_acceleration_string_table[pedal];
-          local turn_string = riding_direction_string_table[turn];
-          log("Vehicle " .. unit_number ..
-              ": pedal=" .. pedal_string ..
-              " turn=" .. turn_string ..
-              " speed=" .. v.speed);
-        end;
-        --]]
-      end;
+  -- Apply the collision and stuck avoidance flags to the driving
+  -- controls, overriding the ordinary navigation decisions.
+  if (reversing) then
+    turn = defines.riding.direction.straight;
+    if (stopping) then
+      pedal = defines.riding.acceleration.braking;
+    else
+      pedal = defines.riding.acceleration.reversing;
     end;
+
+  else
+    if (must_brake) then
+      pedal = defines.riding.acceleration.braking;
+    elseif (cannot_accelerate and pedal == defines.riding.acceleration.accelerating) then
+      pedal = defines.riding.acceleration.nothing;
+    end;
+
+    if (cannot_turn) then
+      turn = defines.riding.direction.straight;
+    end;
+  end;
+
+  -- Apply the desired controls to the vehicle.
+  v.riding_state = {
+    acceleration = pedal,
+    direction = turn,
+  };
+
+  --[[
+  if (tick % 60 == 0) then
+    local pedal_string = riding_acceleration_string_table[pedal];
+    local turn_string = riding_direction_string_table[turn];
+    log("Vehicle " .. unit_number ..
+        ": pedal=" .. pedal_string ..
+        " turn=" .. turn_string ..
+        " speed=" .. v.speed);
+  end;
+  --]]
+end;
+
+-- Find the current commander of 'force' and deal with changes.
+local function refresh_commander(force, vehicles)
+  -- Get the old commander so I can detect changes.
+  local old_cc = force_to_commander_controller[force];
+
+  -- Find the new commander.
+  local new_cc = find_commander_controller(vehicles);
+
+  if (new_cc ~= old_cc) then
+    force_to_commander_controller[force] = new_cc;
+    if (new_cc == nil) then
+      log("Force " .. force .. " lost its commander.");
+
+      -- Reset driving controls and formation positions.
+      for unit_number, controller in pairs(vehicles) do
+        if (controller.vehicle.name == "robotank-entity") then
+          controller.vehicle.riding_state = {
+            acceleration = defines.riding.acceleration.nothing,
+            direction = defines.riding.direction.straight,
+          };
+          controller.formation_position = nil;
+        end;
+      end;
+    elseif (old_cc == nil) then
+      log("Force " .. force .. " gained a commander: unit " .. new_cc.vehicle.unit_number);
+    else
+      -- TODO: This is not handled very well.  For example,
+      -- we do not update formation positions.  (Should we?)
+      log("Force " .. force .. " changed commander to unit " .. new_cc.vehicle.unit_number);
+    end;
+  end;
+end;
+
+-- The vehicle associated with this controller is going away or has
+-- already done so.  Remove the turret if it is still valid, then
+-- remove the controller from all data structures.
+local function remove_vehicle_controller(controller)
+  -- Destroy turret.
+  if (controller.turret ~= nil and controller.turret.valid) then
+    controller.turret.destroy();
+    controller.turret = nil;
+  end;
+
+  -- Remove references in the main table.
+  local force = string_or_name_of(controller.vehicle.force);
+  local vehicles = force_to_vehicles[force];
+  for unit_number, other in pairs(vehicles) do
+    if (other == controller) then
+      -- Remove the controller from the main table.
+      vehicles[unit_number] = nil;
+      log("Vehicle " .. unit_number .. " removed from vehicles table.");
+    else
+      -- Refresh the nearby vehicles since the removed one might
+      -- be in that list.
+      other.nearby_vehicles = nil;
+    end;
+  end;
+
+  -- Check commander.
+  if (force_to_commander_controller[force] == controller) then
+    refresh_commander(force, vehicles);
   end;
 end;
 
@@ -705,119 +739,89 @@ end;
 -- simply iterating through the tables is fairly high, so for speed
 -- I combine everything I can into one iteration.
 local function update_robotank_force_on_tick(tick, force, vehicles)
-  -- Check if the force has a commander.  We need to be careful here
-  -- because the commander might be invalid.  This is used to throttle
-  -- some operations when there is no commander, so it's fine if we
-  -- think there is no commander but actually one just joined.
-  local has_commander = (force_to_commander_controller[force] ~= nil);
-
   --- Some useful tick frequencies.
+  local tick_1 = true;
   local tick_5 = ((tick % 5) == 0);
   local tick_60 = ((tick % 60) == 0);
+
+  -- Refresh the commander periodically.
+  if (tick_60) then
+    refresh_commander(force, vehicles);
+  end;
+
+  -- Check if the force has a commander.
+  local commander_controller = force_to_commander_controller[force];
+  local has_commander = (commander_controller ~= nil);
 
   -- True if we should do certain checks.  Reduce frequency when there
   -- is no commander.
   local check_turret_damage = (has_commander and tick_5 or tick_60);
-  local check_speed = (has_commander or tick_5);
-  local check_ammo = (has_commander and tick_5 or tick_60);
+  local check_speed =         (has_commander and tick_1 or tick_5);
+  local check_ammo =          (has_commander and tick_5 or tick_60);
+  local check_driving =       (has_commander and tick_1 or false);
+  if (not (check_turret_damage or check_speed or check_ammo or check_driving)) then
+    return;
+  end;
 
-  -- Scan for invalid vehicles or turrets.  They become invalid when
-  -- they are mined or destroyed.
+  -- Hoist a couple of variables out of the driving routine.
+  local commander_vehicle = nil;
+  local commander_velocity = nil;
+  if (check_driving) then
+    driving_commander_vehicle = commander_controller.vehicle;
+    driving_commander_velocity = vehicle_velocity(driving_commander_vehicle);
+  end;
+
+  -- Iterate over robotanks to perform maintenance on them.
   local removed_vehicle = false;
   for unit_number, controller in pairs(vehicles) do
-    if (controller.vehicle.valid) then
-      if (controller.turret ~= nil) then
-        if (not controller.turret.valid) then
-          -- Turret was destroyed, kill the tank too.
-          log("Turret of vehicle " .. unit_number .. " destroyed, killing tank too.");
-          controller.vehicle.destroy();
-          vehicles[unit_number] = nil;
-          removed_vehicle = true;
-        else
-          -- Transfer non-fatal damage sustained by the turret to the tank.
-          -- The max health must match what is in data.lua.
-          if (check_turret_damage) then
-            local damage = 1000 - controller.turret.health;
-            if (damage > 0) then
-              if (controller.vehicle.health <= damage) then
-                log("Fatal damage being transferred to robotank " .. unit_number .. ".");
-                controller.turret.destroy();
-                controller.vehicle.die();      -- Make an explosion.
-                controller.turret = nil;
-                vehicles[unit_number] = nil;
-                removed_vehicle = true;
-              else
-                controller.vehicle.health = controller.vehicle.health - damage;
-                controller.turret.health = 1000;
-              end;
-            end;
-          end;
+    if (controller.turret ~= nil) then
+      -- Transfer non-fatal damage sustained by the turret to the tank.
+      -- The max health must match what is in data.lua.
+      if (check_turret_damage) then
+        local damage = 1000 - controller.turret.health;
+        if (damage > 0) then
+          if (controller.vehicle.health <= damage) then
+            log("Fatal damage being transferred to robotank " .. unit_number .. ".");
+            controller.turret.destroy();
+            controller.vehicle.die();      -- Destroy game object and make an explosion.
+            removed_vehicle = true;        -- Skip turret maintenance.
 
-          if (not removed_vehicle) then
-            -- Keep the turret centered on the tank.  If this is not done
-            -- on every tick then the ammo overlay shown when detailed
-            -- view is on will jiggle as the tank moves.
-            if (check_speed and controller.vehicle.speed > 0) then
-              if (not controller.turret.teleport(controller.vehicle.position)) then
-                log("Failed to teleport turret!");
-              end;
+            -- The die() call will fire the on_entity_died event,
+            -- whose handler will remove the controller from the
+            -- tables.  So, let's just confirm that here.
+            if (vehicles[unit_number] ~= nil) then
+              error("Killing the vehicle did not cause it to be removed from tables!");
             end;
-
-            -- Replenish its ammo.
-            if (check_ammo) then
-              maybe_load_robotank_turret_ammo(controller);
-            end;
+          else
+            controller.vehicle.health = controller.vehicle.health - damage;
+            controller.turret.health = 1000;
           end;
         end;
       end;
-    else
-      -- Vehicle is invalid.
-      if (controller.turret ~= nil and controller.turret.valid) then
-        controller.turret.destroy();
-        controller.turret = nil;
-        log("Removed turret from invalid vehicle.");
-      end;
-      vehicles[unit_number] = nil;
-      removed_vehicle = true;
-      log("Removed invalid vehicle " .. unit_number .. ".");
-    end;
-  end;
 
-  -- If we removed anything, invalidate all controllers' nearby vehicles
-  -- lists so they will be recalculated when next needed.  This happens
-  -- rarely so the extra iteration is not a performance issue.
-  if (removed_vehicle) then
-    for unit_number, controller in pairs(vehicles) do
-      controller.nearby_vehicles = nil;
-    end;
-  end;
+      if (not removed_vehicle) then
+        -- Keep the turret centered on the tank.  If this is not done
+        -- on every tick then the ammo overlay shown when detailed
+        -- view is on will jiggle as the tank moves.
+        if (check_speed and controller.vehicle.speed ~= 0) then
+          if (not controller.turret.teleport(controller.vehicle.position)) then
+            log("Failed to teleport turret!");
+          end;
+        end;
 
-  -- Refresh the commander periodically, or whenever a vehicle is removed.
-  if (removed_vehicle or tick_60) then
-    -- Get the old commander so I can detect changes.
-    local old_cc = force_to_commander_controller[force];
+        -- Replenish turret ammo.
+        if (check_ammo) then
+          maybe_load_robotank_turret_ammo(controller);
+        end;
 
-    -- Find the new commander.
-    local new_cc = find_commander_controller(vehicles);
-
-    if (new_cc ~= old_cc) then
-      force_to_commander_controller[force] = new_cc;
-      if (new_cc == nil) then
-        log("Force " .. force .. " lost its commander.");
-      elseif (old_cc == nil) then
-        log("Force " .. force .. " gained a commander: unit " .. new_cc.vehicle.unit_number);
-      else
-        -- Do not try to get the old commander unit number because
-        -- it might be invalid.
-        log("Force " .. force .. " changed commander to unit " .. new_cc.vehicle.unit_number);
+        -- Adjust driving controls.
+        if (check_driving) then
+          drive_vehicle(tick, vehicles, driving_commander_vehicle,
+            driving_commander_velocity, unit_number, controller);
+        end;
       end;
     end;
   end;
-
-  -- Adjust the vehicles' driving controls.  This requires another
-  -- iteration through 'vehicles' because it requires accurate
-  -- commander information.
-  drive_vehicles(tick, force, vehicles);
 end;
 
 script.on_event(defines.events.on_tick, function(e)
@@ -844,20 +848,67 @@ script.on_event({defines.events.on_built_entity, defines.events.on_robot_built_e
   end
 );
 
-script.on_event({defines.events.on_player_mined_entity},
+-- Robots cannot currently mine vehicles, but I trigger on the robot
+-- mined event anyway in case the game changes to allow that.
+script.on_event({defines.events.on_player_mined_entity, defines.events.on_robot_mined_entity},
   function(e)
-    if (e.entity.name == "robotank-entity") then
-      -- When we pick up a robotank, also grab any unused ammo in
-      -- the turret entity so it is not lost.  That doesn't matter
-      -- much when cleaning up after a big battle, but it is annoying
-      -- to lose ammo if I put down a robotank and then pick it up
-      -- again without doing any fighting.
+    if (e.entity.type == "car") then
+      log("Player or robot mined vehicle " .. e.entity.unit_number .. ".");
+
       local controller = find_vehicle_controller(e.entity);
       if (controller) then
-        local turret_inv = controller.turret.get_inventory(defines.inventory.turret_ammo);
-        if (turret_inv) then
-          local res = copy_inventory_from_to(turret_inv, e.buffer);
-          log("Grabbed " .. res .. " items from the turret before it was destroyed.");
+        if (controller.turret ~= nil) then
+          -- When we pick up a robotank, also grab any unused ammo in
+          -- the turret entity so it is not lost.  That doesn't matter
+          -- much when cleaning up after a big battle, but it is annoying
+          -- to lose ammo if I put down a robotank and then pick it up
+          -- again without doing any fighting.
+          local turret_inv = controller.turret.get_inventory(defines.inventory.turret_ammo);
+          if (turret_inv) then
+            local res = copy_inventory_from_to(turret_inv, e.buffer);
+            log("Grabbed " .. res .. " items from the turret before it was destroyed.");
+          end;
+        end;
+
+        remove_vehicle_controller(controller);
+      else
+        -- I am supposed to be keeping track of all vehicles.
+        log("But the vehicle was not in my tables?");
+      end;
+    end;
+  end
+);
+
+
+-- Evidently, when this is called, the entity is still valid.
+script.on_event({defines.events.on_entity_died},
+  function(e)
+    if (e.entity.type == "car") then
+      log("Vehicle " .. e.entity.unit_number .. " died.");
+
+      local controller = find_vehicle_controller(e.entity);
+      if (controller) then
+        remove_vehicle_controller(controller);
+      else
+        -- I am supposed to be keeping track of all vehicles.
+        log("But the vehicle was not in my tables?");
+      end;
+
+    elseif (e.entity.name == "robotank-turret-entity") then
+      -- Normally this should not happen because the turret has 1000 HP
+      -- and any damage it takes is quickly transferred to the tank, with
+      -- the turret's health being then restored to full.  But it is
+      -- conceivable (perhaps with mods) that something does 1000 damage
+      -- in a short time, which will lead to this code running.
+      log("A robotank turret was killed directly!");
+
+      -- Find and remove the controller of the vehicle with this turret.
+      local force = string_or_name_of(e.entity.force);
+      for unit_number, controller in pairs(force_to_vehicles[force]) do
+        if (controller.turret == e.entity) then
+          log("Killing the turret's owner, vehicle " .. unit_number .. ".");
+          controller.vehicle.die();
+          break;
         end;
       end;
     end;
