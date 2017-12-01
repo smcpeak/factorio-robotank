@@ -35,7 +35,9 @@ local function new_vehicle_controller(v)
     -- Reference to the Factorio vehicle entity we are controlling.
     vehicle = v,
 
-    -- Associated turret entity that does the shooting.
+    -- Associated turret entity that does the shooting.  It is always
+    -- non-nil once 'add_vehicle' does its job for any robotank
+    -- vehicle, and nil for any other kind of vehicle.
     turret = nil,
 
     -- If this is a robotank that has a commander, this is an {x,y}
@@ -77,14 +79,13 @@ local function add_vehicle(v)
     local p = controller.vehicle.position;
     local candidates = v.surface.find_entities_filtered{
       area = {{p.x-0.5, p.y-0.5}, {p.x+0.5, p.y+0.5}},
-      --position = p,
       name = "robotank-turret-entity"
     };
     if (#candidates > 0) then
       controller.turret = candidates[1];
       log("Found existing turret with unit number " .. controller.turret.unit_number .. ".");
 
-      -- Strangely, I have a saved game where if I try to find the turret
+      -- Strangely, I have (had) a saved game where if I try to find the turret
       -- by exact position, it fails, yet the reported position afterward
       -- is identical.  So I find using a small area instead.
       --log("Vehicle position: " .. serpent.line(p));
@@ -98,7 +99,10 @@ local function add_vehicle(v)
       if (controller.turret) then
         log("Made new turret.");
       else
-        log("Failed to create turret!");
+        -- This unfortunately is not recoverable because I do not check
+        -- for a nil turret elsewhere, both for simplicity of logic and
+        -- speed of execution.
+        error("Failed to create turret for robotank!");
       end;
     end;
   end;
@@ -112,7 +116,7 @@ local function add_vehicle(v)
 end;
 
 -- Find the controller object associated with the given vehicle, if any.
-local function find_robotank_controller(vehicle)
+local function find_vehicle_controller(vehicle)
   local controllers = force_to_vehicles[string_or_name_of(vehicle.force)];
   if (controllers) then
     return controllers[vehicle.unit_number];
@@ -159,8 +163,7 @@ local function remove_invalid_vehicles()
   for force, vehicles in pairs(force_to_vehicles) do
     for unit_number, controller in pairs(vehicles) do
       if (controller.vehicle.valid) then
-        if (controller.turret ~= nil and
-            not controller.turret.valid) then
+        if (controller.turret ~= nil and not controller.turret.valid) then
           -- Turret was destroyed, kill the tank too.
           log("Turret of vehicle " .. unit_number .. " destroyed, killing tank too.");
           controller.vehicle.destroy();
@@ -323,35 +326,33 @@ local function update_robotanks(tick)
 
   for force, vehicles in pairs(force_to_vehicles) do
     for unit_number, controller in pairs(vehicles) do
-      if (controller.vehicle.name == "robotank-entity") then
-        if (controller.turret ~= nil) then
-          -- Transfer any damage sustained by the turret to the tank.
-          -- The max health must match what is in data.lua.
-          local damage = 1000 - controller.turret.health;
-          if (damage > 0) then
-            if (controller.vehicle.health <= damage) then
-              log("Fatal damage being transferred to robotank " .. unit_number .. ".");
-              controller.turret.destroy();
-              controller.vehicle.die();      -- Make an explosion.
-              controller.turret = nil;
-              vehicles[unit_number] = nil;
-              break;
-            else
-              controller.vehicle.health = controller.vehicle.health - damage;
-              controller.turret.health = 1000;
-            end;
+      if (controller.turret ~= nil) then
+        -- Transfer any damage sustained by the turret to the tank.
+        -- The max health must match what is in data.lua.
+        local damage = 1000 - controller.turret.health;
+        if (damage > 0) then
+          if (controller.vehicle.health <= damage) then
+            log("Fatal damage being transferred to robotank " .. unit_number .. ".");
+            controller.turret.destroy();
+            controller.vehicle.die();      -- Make an explosion.
+            controller.turret = nil;
+            vehicles[unit_number] = nil;
+            break;
+          else
+            controller.vehicle.health = controller.vehicle.health - damage;
+            controller.turret.health = 1000;
           end;
-
-          -- Keep the turret centered on the tank.
-          if (not equal_vec(controller.vehicle.position, controller.previous_position)) then
-            controller.previous_position = table.deepcopy(controller.vehicle.position);
-            if (not controller.turret.teleport(controller.vehicle.position)) then
-              log("Failed to teleport turret!");
-            end;
-          end;
-
-          maybe_load_robotank_turret_ammo(controller);
         end;
+
+        -- Keep the turret centered on the tank.
+        if (not equal_vec(controller.vehicle.position, controller.previous_position)) then
+          controller.previous_position = table.deepcopy(controller.vehicle.position);
+          if (not controller.turret.teleport(controller.vehicle.position)) then
+            log("Failed to teleport turret!");
+          end;
+        end;
+
+        maybe_load_robotank_turret_ammo(controller);
       end;
     end;
   end;
@@ -858,8 +859,8 @@ script.on_event({defines.events.on_player_mined_entity},
       -- much when cleaning up after a big battle, but it is annoying
       -- to lose ammo if I put down a robotank and then pick it up
       -- again without doing any fighting.
-      local controller = find_robotank_controller(e.entity);
-      if (controller and controller.turret) then
+      local controller = find_vehicle_controller(e.entity);
+      if (controller) then
         local turret_inv = controller.turret.get_inventory(defines.inventory.turret_ammo);
         if (turret_inv) then
           local res = copy_inventory_from_to(turret_inv, e.buffer);
