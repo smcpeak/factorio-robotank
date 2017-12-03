@@ -581,13 +581,6 @@ local function drive_vehicle(tick, vehicles, commander_vehicle,
       -- the tank is in its intended spot in the formation, moving at the
       -- same speed as the commander.
     end;
-
-    -- Since we're basically at our destination, clear the stuck
-    -- avoidance variables since we're not going down the other code
-    -- path for a while now.
-    controller.stuck_since = nil;
-    controller.reversing_until = nil;
-
   else
     -- Compute orientation in [0,1] that will reduce displacement.
     local desired_orientation = vector_to_orientation(projected_straight_disp);
@@ -672,7 +665,11 @@ local function drive_vehicle(tick, vehicles, commander_vehicle,
   -- about 0.003 once every 300 ticks (coincidentally the same as my
   -- stuck timer duration), even though it is not moving.  I think that
   -- is an artifact of Factorio collision mechanics.
-  if (math.abs(v.speed) < 0.005 and not reversing) then
+  if (projected_straight_dist < 0.1) then
+    -- At destination, not stuck.
+    controller.stuck_since = nil;
+    controller.reversing_until = nil;
+  elseif (math.abs(v.speed) < 0.005 and not reversing) then
     if (controller.stuck_since == nil) then
       -- Just became stuck, wait a bit to see if things clear up.
       -- We might not even really be stuck; speed sometimes drops
@@ -693,7 +690,7 @@ local function drive_vehicle(tick, vehicles, commander_vehicle,
       end;
     end;
   else
-    -- Not stuck, reset stuck timer.
+    -- Moving or reversing, not stuck.
     controller.stuck_since = nil;
   end;
 
