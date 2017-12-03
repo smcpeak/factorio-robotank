@@ -20,11 +20,11 @@ local found_vehicles = false;
 -- Structure of 'global' is {
 --   -- Data version number, bumped when I make a change that requires
 --   -- special handling.
---   data_version = 1;
+--   data_version = 2;
 --
---   -- Map from force to its vehicles.  Each force's vehicles are a map
---   -- from unit_number to its vehicle_controller object.
---   force_to_vehicles = {};
+--   -- Map from force to its controllers.  Each force's controllers
+--   -- are a map from unit_number to its vehicle_controller object.
+--   force_to_controllers = {};
 --
 --   -- Map from force to its commander vehicle controller, if there is
 --   -- such a commander.
@@ -60,19 +60,19 @@ local function new_vehicle_controller(v)
     -- then clear the field and resume normal driving.
     reversing_until = nil,
 
-    -- Array of other vehicles (on the same force) that are near
-    -- enough to this one to be relevant for collision avoidance.
+    -- Array of other vehicle controllers (on the same force) that are
+    -- near enough to this one to be relevant for collision avoidance.
     -- When this is nil, it needs to be recomputed.
-    nearby_vehicles = nil,
+    nearby_controllers = nil,
   };
 end;
 
 -- Add a vehicle to our table and return its controller.
 local function add_vehicle(v)
   local force_name = string_or_name_of(v.force);
-  global.force_to_vehicles[force_name] = global.force_to_vehicles[force_name] or {}
+  global.force_to_controllers[force_name] = global.force_to_controllers[force_name] or {}
   local controller = new_vehicle_controller(v);
-  global.force_to_vehicles[force_name][v.unit_number] = controller;
+  global.force_to_controllers[force_name][v.unit_number] = controller;
 
   if (v.name == "robotank-entity") then
     -- Is there already an associated turret here?
@@ -117,7 +117,7 @@ end;
 
 -- Find the controller object associated with the given vehicle, if any.
 local function find_vehicle_controller(vehicle)
-  local controllers = global.force_to_vehicles[string_or_name_of(vehicle.force)];
+  local controllers = global.force_to_controllers[string_or_name_of(vehicle.force)];
   if (controllers) then
     return controllers[vehicle.unit_number];
   else
@@ -131,10 +131,23 @@ end;
 -- properly initialized.
 local function initialize_loaded_global_data()
   log("Loaded data_version: " .. serpent.line(global.data_version));
-  if (global.data_version == nil) then
-    log("Setting global.data_version to 1.");
-    global.data_version = 1;
+  if (global.data_version == 1) then
+    log("RoboTank: Upgrading data_version 1 to 2.");
+    -- I renamed "force_to_vehicles" to "force_to_controllers".
+    global.force_to_controllers = global.force_to_vehicles;
+    global.force_to_vehicles = nil;
+
+    -- I also renamed "nearby_vehicles" to "nearby_controllers".
+    if (global.force_to_controllers ~= nil) then
+      for _, controllers in pairs(global.force_to_controllers) do
+        for _, controller in pairs(controllers) do
+          controller.nearby_controllers = controller.nearby_vehicles;
+          controller.nearby_vehicles = nil;
+        end;
+      end;
+    end;
   end;
+  global.data_version = 2;
 
   if (global.force_to_commander_controller == nil) then
     log("force_to_commander_controller was nil, setting it to empty.");
@@ -144,15 +157,15 @@ local function initialize_loaded_global_data()
         table_size(global.force_to_commander_controller) .. " entries.");
   end;
 
-  if (global.force_to_vehicles == nil) then
-    log("force_to_vehicles was nil, setting it to empty.");
-    global.force_to_vehicles = {};
+  if (global.force_to_controllers == nil) then
+    log("force_to_controllers was nil, setting it to empty.");
+    global.force_to_controllers = {};
   else
-    log("force_to_vehicles has " ..
-        table_size(global.force_to_vehicles) .. " entries.");
-    for force, vehicles in pairs(global.force_to_vehicles) do
+    log("force_to_controllers has " ..
+        table_size(global.force_to_controllers) .. " entries.");
+    for force, controllers in pairs(global.force_to_controllers) do
       log("  force \"" .. force .. "\" has " ..
-          table_size(vehicles) .. " vehicles.");
+          table_size(controllers) .. " vehicle controllers.");
     end;
   end;
 end;
@@ -174,15 +187,15 @@ local function find_vehicles(tick)
     turrets[t.unit_number] = t;
   end;
 
-  -- Add all vehicles to 'force_to_vehicles' table.
+  -- Add all vehicles to 'force_to_controllers' table.
   for _, v in ipairs(game.surfaces[1].find_entities_filtered{type = "car"}) do
     --log("found vehicle: " .. serpent.block(entity_info(v)));
 
     -- See if we already know about this vehicle from what is in the save file.
     local force = string_or_name_of(v.force);
     local controller = nil;
-    if (global.force_to_vehicles[force] ~= nil) then
-      controller = global.force_to_vehicles[force][v.unit_number];
+    if (global.force_to_controllers[force] ~= nil) then
+      controller = global.force_to_controllers[force][v.unit_number];
     end;
     if (controller ~= nil) then
       log("Found existing controller object from the save file for unit " .. v.unit_number);
@@ -207,10 +220,10 @@ local function find_vehicles(tick)
   end;
 end;
 
--- Find the vehicle controller among 'vehicles' that is commanding them,
--- if any.
-local function find_commander_controller(vehicles)
-  for unit_number, controller in pairs(vehicles) do
+-- Find the vehicle controller among 'controllers' that is commanding
+-- them, if any.
+local function find_commander_controller(controllers)
+  for unit_number, controller in pairs(controllers) do
     local v = controller.vehicle;
     -- A robotank cannot be a commander.
     if (v.name ~= "robotank") then
@@ -377,8 +390,8 @@ local function predict_approach(p1, v1, p2, v2, dist)
 end;
 
 -- Return flags describing what is necessary for 'controller.vehicle'
--- to avoid colliding with one of the 'vehicles'.
-local function collision_avoidance(tick, vehicles, controller)
+-- to avoid colliding with one of the 'controllers'.
+local function collision_avoidance(tick, controllers, controller)
   local cannot_turn = false;
   local must_brake = false;
   local cannot_accelerate = false;
@@ -387,9 +400,9 @@ local function collision_avoidance(tick, vehicles, controller)
 
   -- Periodically refresh the list of other vehicles near enough
   -- to this one to be considered by the per-tick collision analysis.
-  if (controller.nearby_vehicles == nil or (tick % 60 == 0)) then
-    controller.nearby_vehicles = {};
-    for _, other in pairs(vehicles) do
+  if (controller.nearby_controllers == nil or (tick % 60 == 0)) then
+    controller.nearby_controllers = {};
+    for _, other in pairs(controllers) do
       if (other.vehicle ~= v) then
         -- The other vehicle is considered nearby if it is or will be
         -- within a certain, relatively large, distance before we next
@@ -401,14 +414,14 @@ local function collision_avoidance(tick, vehicles, controller)
           vehicle_velocity(v),
           20);
         if (approach_ticks ~= nil and approach_ticks < 60) then
-          table.insert(controller.nearby_vehicles, other);
+          table.insert(controller.nearby_controllers, other);
         end;
       end;
     end;
   end;
 
   -- Scan nearby vehicles for collision potential.
-  for _, other in ipairs(controller.nearby_vehicles) do
+  for _, other in ipairs(controller.nearby_controllers) do
     -- Are we too close to turn?
     local dist_sq = mag_sq(subtract_vec(other.vehicle.position, v.position));
     if (dist_sq < 11.5) then      -- about 3.4 squared
@@ -457,10 +470,10 @@ local function collision_avoidance(tick, vehicles, controller)
 end;
 
 -- Is it safe for vehicle 'v' to reverse out of a stuck position?
-local function can_reverse(tick, vehicles, controller)
+local function can_reverse(tick, controller)
   local v = controller.vehicle;
 
-  for _, other in ipairs(controller.nearby_vehicles) do
+  for _, other in ipairs(controller.nearby_controllers) do
     -- With this vehicle reversing at a nominal velocity, and the
     -- other vehicle at its current velocity, how long until we come
     -- close, and in which direction would contact occur?
@@ -491,10 +504,10 @@ local function can_reverse(tick, vehicles, controller)
 end;
 
 
--- Get the number of robotanks in 'vehicles'.
-local function num_robotanks(vehicles)
+-- Get the number of robotanks in 'controllers'.
+local function num_robotanks(controllers)
   local ct = 0;
-  for _, controller in pairs(vehicles) do
+  for _, controller in pairs(controllers) do
     if (controller.vehicle.name == "robotank-entity") then
       ct = ct + 1;
     end;
@@ -531,7 +544,7 @@ end;
 -- This means setting its 'riding_state', which is basically programmatic
 -- control of what the player can do with the WASD keys.  This is only
 -- called when we know there is a commander.
-local function drive_vehicle(tick, vehicles, commander_vehicle,
+local function drive_vehicle(tick, controllers, commander_vehicle,
                              commander_velocity, unit_number, controller)
   local v = controller.vehicle;
   if (controller.formation_position == nil) then
@@ -627,7 +640,7 @@ local function drive_vehicle(tick, vehicles, commander_vehicle,
   -- Having decided what we would want to do in the absence of
   -- obstacles, restrict behavior in order to avoid collisions.
   local cannot_turn, must_brake, cannot_accelerate =
-    collision_avoidance(tick, vehicles, controller);
+    collision_avoidance(tick, controllers, controller);
 
   -- Are we reversing out of a stuck position?  That overrides the
   -- decisions made above.
@@ -679,7 +692,7 @@ local function drive_vehicle(tick, vehicles, commander_vehicle,
       -- Have been stuck for a while.  Periodically check if we
       -- can safely reverse out of here.
       if (tick % 60 == 0) then
-        if (can_reverse(tick, vehicles, controller)) then
+        if (can_reverse(tick, controller)) then
           log("Vehicle " .. unit_number .. " is stuck, trying to reverse out of it.");
           controller.stuck_since = nil;
           controller.reversing_until = tick + 60;
@@ -735,12 +748,12 @@ local function drive_vehicle(tick, vehicles, commander_vehicle,
 end;
 
 -- Find the current commander of 'force' and deal with changes.
-local function refresh_commander(force, vehicles)
+local function refresh_commander(force, controllers)
   -- Get the old commander so I can detect changes.
   local old_cc = global.force_to_commander_controller[force];
 
   -- Find the new commander.
-  local new_cc = find_commander_controller(vehicles);
+  local new_cc = find_commander_controller(controllers);
 
   if (new_cc ~= old_cc) then
     global.force_to_commander_controller[force] = new_cc;
@@ -748,7 +761,7 @@ local function refresh_commander(force, vehicles)
       log("Force " .. force .. " lost its commander.");
 
       -- Reset driving controls and formation positions.
-      for unit_number, controller in pairs(vehicles) do
+      for unit_number, controller in pairs(controllers) do
         if (controller.vehicle.name == "robotank-entity") then
           controller.vehicle.riding_state = {
             acceleration = defines.riding.acceleration.nothing,
@@ -779,22 +792,22 @@ local function remove_vehicle_controller(controller)
 
   -- Remove references in the main table.
   local force = string_or_name_of(controller.vehicle.force);
-  local vehicles = global.force_to_vehicles[force];
-  for unit_number, other in pairs(vehicles) do
+  local controllers = global.force_to_controllers[force];
+  for unit_number, other in pairs(controllers) do
     if (other == controller) then
       -- Remove the controller from the main table.
-      vehicles[unit_number] = nil;
-      log("Vehicle " .. unit_number .. " removed from vehicles table.");
+      controllers[unit_number] = nil;
+      log("Vehicle " .. unit_number .. " removed from controllers table.");
     else
       -- Refresh the nearby vehicles since the removed one might
       -- be in that list.
-      other.nearby_vehicles = nil;
+      other.nearby_controllers = nil;
     end;
   end;
 
   -- Check commander.
   if (global.force_to_commander_controller[force] == controller) then
-    refresh_commander(force, vehicles);
+    refresh_commander(force, controllers);
   end;
 end;
 
@@ -803,7 +816,7 @@ end;
 -- This function does a lot of different things because the cost of
 -- simply iterating through the tables is fairly high, so for speed
 -- I combine everything I can into one iteration.
-local function update_robotank_force_on_tick(tick, force, vehicles)
+local function update_robotank_force_on_tick(tick, force, controllers)
   --- Some useful tick frequencies.
   local tick_1 = true;
   local tick_5 = ((tick % 5) == 0);
@@ -812,7 +825,7 @@ local function update_robotank_force_on_tick(tick, force, vehicles)
 
   -- Refresh the commander periodically.
   if (tick_60) then
-    refresh_commander(force, vehicles);
+    refresh_commander(force, controllers);
   end;
 
   -- Check if the force has a commander.
@@ -839,7 +852,7 @@ local function update_robotank_force_on_tick(tick, force, vehicles)
 
   -- Iterate over robotanks to perform maintenance on them.
   local removed_vehicle = false;
-  for unit_number, controller in pairs(vehicles) do
+  for unit_number, controller in pairs(controllers) do
     if (controller.turret ~= nil) then
       -- Transfer non-fatal damage sustained by the turret to the tank.
       -- The max health must match what is in data.lua.
@@ -855,7 +868,7 @@ local function update_robotank_force_on_tick(tick, force, vehicles)
             -- The die() call will fire the on_entity_died event,
             -- whose handler will remove the controller from the
             -- tables.  So, let's just confirm that here.
-            if (vehicles[unit_number] ~= nil) then
+            if (controllers[unit_number] ~= nil) then
               error("Killing the vehicle did not cause it to be removed from tables!");
             end;
           else
@@ -887,7 +900,7 @@ local function update_robotank_force_on_tick(tick, force, vehicles)
 
         -- Adjust driving controls.
         if (check_driving) then
-          drive_vehicle(tick, vehicles, driving_commander_vehicle,
+          drive_vehicle(tick, controllers, driving_commander_vehicle,
             driving_commander_velocity, unit_number, controller);
         end;
       end;
@@ -903,8 +916,8 @@ script.on_event(defines.events.on_tick, function(e)
   end;
 
   -- For each force, update the robotanks.
-  for force, vehicles in pairs(global.force_to_vehicles) do
-    update_robotank_force_on_tick(e.tick, force, vehicles);
+  for force, controllers in pairs(global.force_to_controllers) do
+    update_robotank_force_on_tick(e.tick, force, controllers);
   end;
 end);
 
@@ -975,7 +988,7 @@ script.on_event({defines.events.on_entity_died},
 
       -- Find and remove the controller of the vehicle with this turret.
       local force = string_or_name_of(e.entity.force);
-      for unit_number, controller in pairs(global.force_to_vehicles[force]) do
+      for unit_number, controller in pairs(global.force_to_controllers[force]) do
         if (controller.turret == e.entity) then
           log("Killing the turret's owner, vehicle " .. unit_number .. ".");
           controller.vehicle.die();

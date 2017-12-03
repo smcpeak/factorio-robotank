@@ -1,6 +1,6 @@
 TODO list for RoboTank mod
 
-- Rename force_to_vehicles to indicate it contains controller objects.
+- When tank is at high speed, it overshoots its formation position.
 - Allow player to jump in a robotank to help get it unstuck without resetting its formation position.
 - Questionable behavior when multiple transmitters present
 - Optimize collision detection to only run every other frame?
