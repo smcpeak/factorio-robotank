@@ -329,15 +329,21 @@ local function collision_avoidance(tick, vehicles, controller)
   local v = controller.vehicle;
 
   -- Periodically refresh the list of other vehicles near enough
-  -- to this one to be relevant.
+  -- to this one to be considered by the per-tick collision analysis.
   if (controller.nearby_vehicles == nil or (tick % 60 == 0)) then
     controller.nearby_vehicles = {};
     for _, other in pairs(vehicles) do
       if (other.vehicle ~= v) then
-        -- Maximum distance is a baseline of 10 plus additional margin
-        -- for fast moving vehicles.
-        local threshold = 10 + math.abs(v.speed) * 10 + math.abs(other.vehicle.speed) * 10;
-        if (mag_sq(subtract_vec(other.vehicle.position, v.position)) < threshold * threshold) then
+        -- The other vehicle is considered nearby if it is or will be
+        -- within a certain, relatively large, distance before we next
+        -- refresh the list of nearby vehicles.
+        local approach_ticks, approach_angle = predict_approach(
+          other.vehicle.position,
+          vehicle_velocity(other.vehicle),
+          v.position,
+          vehicle_velocity(v),
+          20);
+        if (approach_ticks ~= nil and approach_ticks < 60) then
           table.insert(controller.nearby_vehicles, other);
         end;
       end;
@@ -347,7 +353,8 @@ local function collision_avoidance(tick, vehicles, controller)
   -- Scan nearby vehicles for collision potential.
   for _, other in ipairs(controller.nearby_vehicles) do
     -- Are we too close to turn?
-    if (mag_sq(subtract_vec(other.vehicle.position, v.position)) < 11.5) then
+    local dist_sq = mag_sq(subtract_vec(other.vehicle.position, v.position));
+    if (dist_sq < 11.5) then      -- about 3.4 squared
       cannot_turn = true;
     end;
 
@@ -373,12 +380,16 @@ local function collision_avoidance(tick, vehicles, controller)
     end;
 
     --[[
-    if (tick % 30 == 0) then
-      log("approach_ticks=" .. serpent.line(approach_ticks) ..
-          " approach_angle=" .. serpent.line(approach_angle) ..
-          " approach_orientation=" .. serpent.line(approach_orientation) ..
-          " relative_orientation=" .. serpent.line(relative_orientation) ..
+    if (other.vehicle.passenger == nil and tick % 10 == 0) then
+      log("" .. controller.vehicle.unit_number ..
+          " approaching " .. other.vehicle.unit_number ..
+          ": dist=" .. math.sqrt(dist_sq) ..
+          " ticks=" .. serpent.line(approach_ticks) ..
+          " angle=" .. serpent.line(approach_angle) ..
+          --" approach_orientation=" .. serpent.line(approach_orientation) ..
+          " relorient=" .. serpent.line(relative_orientation) ..
           " speed=" .. v.speed ..
+          " cannot_turn=" .. serpent.line(cannot_turn) ..
           " must_brake=" .. serpent.line(must_brake) ..
           " cannot_accelerate=" .. serpent.line(cannot_accelerate));
     end;
