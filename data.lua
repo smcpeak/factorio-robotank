@@ -103,7 +103,7 @@ local robotank_entity = table.deepcopy(data.raw.car.tank);
 robotank_entity.name = "robotank-entity";
 robotank_entity.icons = robotank_item.icons;
 robotank_entity.minable = {
-  mining_time = 1,
+  mining_time = 0.25,          -- Less annoying to pick up a squad.
   result = "robotank-item",
 };
 
