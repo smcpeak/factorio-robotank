@@ -1,5 +1,8 @@
 TODO list for RoboTank mod
 
+- Bug: stuck_since is constantly being set
+- Rename force_to_vehicles to indicate it contains controller objects.
+- Allow player to jump in a robotank to help get it unstuck without resetting its formation position.
 - Questionable behavior when multiple transmitters present
 - Optimize collision detection to only run every other frame?
 - Organize robotanks into squads

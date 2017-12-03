@@ -17,13 +17,19 @@ end);
 -- True once we have scanned the world for vehicles after loading.
 local found_vehicles = false;
 
--- Map from force to its vehicles.  Each force's vehicles are a map
--- from unit_number to its vehicle_controller object.
-local force_to_vehicles = {};
-
--- Map from force to its commander vehicle controller, if there is
--- such a commander.
-local force_to_commander_controller = {};
+-- Structure of 'global' is {
+--   -- Data version number, bumped when I make a change that requires
+--   -- special handling.
+--   data_version = 1;
+--
+--   -- Map from force to its vehicles.  Each force's vehicles are a map
+--   -- from unit_number to its vehicle_controller object.
+--   force_to_vehicles = {};
+--
+--   -- Map from force to its commander vehicle controller, if there is
+--   -- such a commander.
+--   force_to_commander_controller = {};
+-- };
 
 -- Control state for a vehicle.  All vehicles have control states,
 -- including the commander vehicle (if any).
@@ -64,9 +70,9 @@ end;
 -- Add a vehicle to our table and return its controller.
 local function add_vehicle(v)
   local force_name = string_or_name_of(v.force);
-  force_to_vehicles[force_name] = force_to_vehicles[force_name] or {}
+  global.force_to_vehicles[force_name] = global.force_to_vehicles[force_name] or {}
   local controller = new_vehicle_controller(v);
-  force_to_vehicles[force_name][v.unit_number] = controller;
+  global.force_to_vehicles[force_name][v.unit_number] = controller;
 
   if (v.name == "robotank-entity") then
     -- Is there already an associated turret here?
@@ -111,7 +117,7 @@ end;
 
 -- Find the controller object associated with the given vehicle, if any.
 local function find_vehicle_controller(vehicle)
-  local controllers = force_to_vehicles[string_or_name_of(vehicle.force)];
+  local controllers = global.force_to_vehicles[string_or_name_of(vehicle.force)];
   if (controllers) then
     return controllers[vehicle.unit_number];
   else
@@ -119,9 +125,47 @@ local function find_vehicle_controller(vehicle)
   end;
 end;
 
+-- The mod just started running.  Some data may or may not have been
+-- loaded from 'global' (depending on whether the mod was previously
+-- part of the game, and what version it was if so).  Make sure it is
+-- properly initialized.
+local function initialize_loaded_global_data()
+  log("Loaded data_version: " .. serpent.line(global.data_version));
+  if (global.data_version == nil) then
+    log("Setting global.data_version to 1.");
+    global.data_version = 1;
+  end;
+
+  if (global.force_to_commander_controller == nil) then
+    log("force_to_commander_controller was nil, setting it to empty.");
+    global.force_to_commander_controller = {};
+  else
+    log("force_to_commander_controller has " ..
+        table_size(global.force_to_commander_controller) .. " entries.");
+  end;
+
+  if (global.force_to_vehicles == nil) then
+    log("force_to_vehicles was nil, setting it to empty.");
+    global.force_to_vehicles = {};
+  else
+    log("force_to_vehicles has " ..
+        table_size(global.force_to_vehicles) .. " entries.");
+    for force, vehicles in pairs(global.force_to_vehicles) do
+      log("  force \"" .. force .. "\" has " ..
+          table_size(vehicles) .. " vehicles.");
+    end;
+  end;
+end;
+
 -- Scan the world for vehicles.
-local function find_vehicles()
-  log("RoboTank: find_vehicles");
+local function find_vehicles(tick)
+  log("RoboTank: find_vehicles; current tick is " .. tick);
+
+  -- Do the main initialization.
+  initialize_loaded_global_data();
+
+  -- The rest of this code compares what we just loaded to what is in
+  -- the game world in order to find and fix any discrepancies.
 
   -- Scan the surface for all of our hidden turrets so that later we
   -- can get rid of any not associated with a vehicle.
@@ -133,10 +177,23 @@ local function find_vehicles()
   -- Add all vehicles to 'force_to_vehicles' table.
   for _, v in ipairs(game.surfaces[1].find_entities_filtered{type = "car"}) do
     --log("found vehicle: " .. serpent.block(entity_info(v)));
-    local controller = add_vehicle(v);
+
+    -- See if we already know about this vehicle from what is in the save file.
+    local force = string_or_name_of(v.force);
+    local controller = nil;
+    if (global.force_to_vehicles[force] ~= nil) then
+      controller = global.force_to_vehicles[force][v.unit_number];
+    end;
+    if (controller ~= nil) then
+      log("Found existing controller object from the save file for unit " .. v.unit_number);
+    else
+      log("Unit number " .. v.unit_number .. " has no controller in save file.");
+      controller = add_vehicle(v);
+    end;
+
     if (controller.turret ~= nil) then
       -- This turret is now accounted for (it might have existed before,
-      -- or it might have just been created by 'add_vehicle).
+      -- or it might have just been created by 'add_vehicle').
       turrets[controller.turret.unit_number] = nil;
     end;
   end;
@@ -683,13 +740,13 @@ end;
 -- Find the current commander of 'force' and deal with changes.
 local function refresh_commander(force, vehicles)
   -- Get the old commander so I can detect changes.
-  local old_cc = force_to_commander_controller[force];
+  local old_cc = global.force_to_commander_controller[force];
 
   -- Find the new commander.
   local new_cc = find_commander_controller(vehicles);
 
   if (new_cc ~= old_cc) then
-    force_to_commander_controller[force] = new_cc;
+    global.force_to_commander_controller[force] = new_cc;
     if (new_cc == nil) then
       log("Force " .. force .. " lost its commander.");
 
@@ -725,7 +782,7 @@ local function remove_vehicle_controller(controller)
 
   -- Remove references in the main table.
   local force = string_or_name_of(controller.vehicle.force);
-  local vehicles = force_to_vehicles[force];
+  local vehicles = global.force_to_vehicles[force];
   for unit_number, other in pairs(vehicles) do
     if (other == controller) then
       -- Remove the controller from the main table.
@@ -739,7 +796,7 @@ local function remove_vehicle_controller(controller)
   end;
 
   -- Check commander.
-  if (force_to_commander_controller[force] == controller) then
+  if (global.force_to_commander_controller[force] == controller) then
     refresh_commander(force, vehicles);
   end;
 end;
@@ -762,7 +819,7 @@ local function update_robotank_force_on_tick(tick, force, vehicles)
   end;
 
   -- Check if the force has a commander.
-  local commander_controller = force_to_commander_controller[force];
+  local commander_controller = global.force_to_commander_controller[force];
   local has_commander = (commander_controller ~= nil);
 
   -- True if we should do certain checks.  Reduce frequency when there
@@ -845,11 +902,11 @@ script.on_event(defines.events.on_tick, function(e)
   -- On the very first tick after loading, initialize the vehicle table.
   if (not found_vehicles) then
     found_vehicles = true;
-    find_vehicles();
+    find_vehicles(e.tick);
   end;
 
   -- For each force, update the robotanks.
-  for force, vehicles in pairs(force_to_vehicles) do
+  for force, vehicles in pairs(global.force_to_vehicles) do
     update_robotank_force_on_tick(e.tick, force, vehicles);
   end;
 end);
@@ -921,7 +978,7 @@ script.on_event({defines.events.on_entity_died},
 
       -- Find and remove the controller of the vehicle with this turret.
       local force = string_or_name_of(e.entity.force);
-      for unit_number, controller in pairs(force_to_vehicles[force]) do
+      for unit_number, controller in pairs(global.force_to_vehicles[force]) do
         if (controller.turret == e.entity) then
           log("Killing the turret's owner, vehicle " .. unit_number .. ".");
           controller.vehicle.die();
