@@ -83,6 +83,15 @@ function vehicle_velocity(v)
   return vehicle_velocity_if_speed(v, v.speed);
 end;
 
+-- Get the velocity of an arbitrary entity.
+function entity_velocity(e)
+  if (e.type == "car") then
+    return vehicle_velocity(e);
+  else
+    return {x=0, y=0};
+  end;
+end;
+
 riding_acceleration_string_table = {
   [defines.riding.acceleration.accelerating] = "accelerating",
   [defines.riding.acceleration.nothing] = "nothing",

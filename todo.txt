@@ -1,7 +1,9 @@
 TODO list for RoboTank mod
 
 - I want to be able to see fuel and ammo by hovering mouse on a robotank.
-- Robotank should avoid running over the player!
+- Rename 'vehicle' to 'entity'.
+- Remove unused 'num_robotanks'.
+- Sometimes the reversing behavior kicks in while the tank is turning successfully.
 - Questionable behavior when multiple transmitters present
 - Optimize collision detection to only run every other frame?
 - Organize robotanks into squads

@@ -14,8 +14,13 @@ script.on_load(function()
   log("RoboTank on_load called.");
 end);
 
--- True once we have scanned the world for vehicles after loading.
-local found_vehicles = false;
+-- True when we need to examine the global data just loaded to
+-- upgrade or validate it.
+local must_initialize_loaded_global_data = true;
+
+-- True when, on the next tick, we need to rescan the world to check
+-- for consistency with our data structures.
+local must_rescan_world = true;
 
 -- Structure of 'global' is {
 --   -- Data version number, bumped when I make a change that requires
@@ -31,16 +36,22 @@ local found_vehicles = false;
 --   force_to_commander_controller = {};
 -- };
 
--- Control state for a vehicle.  All vehicles have control states,
--- including the commander vehicle (if any).
+-- Control state for a vehicle.  All vehicles and player character
+-- entities have control states.
 local function new_vehicle_controller(v)
   return {
-    -- Reference to the Factorio vehicle entity we are controlling.
+    -- Reference to the Factorio entity we are controlling.  This is
+    -- either a vehicle (type=="car") or player character
+    -- (name=="player").
+    --
+    -- TODO: Rename this attribute to 'entity' to reflect its more
+    -- general purpose, and also rename the many functions with
+    -- "vehicle" in their name for the same reason.
     vehicle = v,
 
     -- Associated turret entity that does the shooting.  It is always
     -- non-nil once 'add_vehicle' does its job for any robotank
-    -- vehicle, and nil for any other kind of vehicle.
+    -- vehicle, and nil for any other kind of entity.
     turret = nil,
 
     -- If this is a robotank that has a commander, this is an {x,y}
@@ -134,6 +145,7 @@ local function find_vehicle_controller(vehicle)
   end;
 end;
 
+
 -- The mod just started running.  Some data may or may not have been
 -- loaded from 'global' (depending on whether the mod was previously
 -- part of the game, and what version it was if so).  Make sure it is
@@ -179,16 +191,36 @@ local function initialize_loaded_global_data()
   end;
 end;
 
--- Scan the world for vehicles.
-local function find_vehicles(tick)
-  log("RoboTank: find_vehicles; current tick is " .. tick);
 
-  -- Do the main initialization.
-  initialize_loaded_global_data();
+-- Called during 'find_unassociated_vehicles' when one is found.
+local function found_a_vehicle(v, turrets)
+  --log("found vehicle: " .. serpent.block(entity_info(v)));
 
-  -- The rest of this code compares what we just loaded to what is in
-  -- the game world in order to find and fix any discrepancies.
+  -- See if we already know about this vehicle.
+  local force = string_or_name_of(v.force);
+  local controller = nil;
+  if (global.force_to_controllers[force] ~= nil) then
+    controller = global.force_to_controllers[force][v.unit_number];
+  end;
+  if (controller ~= nil) then
+    log("Found existing controller object for unit " .. v.unit_number);
+  else
+    log("Unit number " .. v.unit_number .. " has no controller.");
+    controller = add_vehicle(v);
+  end;
 
+  if (controller.turret ~= nil) then
+    -- This turret is now accounted for (it might have existed before,
+    -- or it might have just been created by 'add_vehicle').
+    turrets[controller.turret.unit_number] = nil;
+  end;
+end;
+
+
+-- Scan the world for vehicles and turrets that should be tracked in
+-- my data structures but are not.  In most cases, we add them, but
+-- in one case the world entity is deleted.
+local function find_unassociated_vehicles()
   -- Scan the surface for all of our hidden turrets so that later we
   -- can get rid of any not associated with a vehicle.
   local turrets = {};
@@ -198,26 +230,12 @@ local function find_vehicles(tick)
 
   -- Add all vehicles to 'force_to_controllers' table.
   for _, v in ipairs(game.surfaces[1].find_entities_filtered{type = "car"}) do
-    --log("found vehicle: " .. serpent.block(entity_info(v)));
+    found_a_vehicle(v, turrets);
+  end;
 
-    -- See if we already know about this vehicle from what is in the save file.
-    local force = string_or_name_of(v.force);
-    local controller = nil;
-    if (global.force_to_controllers[force] ~= nil) then
-      controller = global.force_to_controllers[force][v.unit_number];
-    end;
-    if (controller ~= nil) then
-      log("Found existing controller object from the save file for unit " .. v.unit_number);
-    else
-      log("Unit number " .. v.unit_number .. " has no controller in save file.");
-      controller = add_vehicle(v);
-    end;
-
-    if (controller.turret ~= nil) then
-      -- This turret is now accounted for (it might have existed before,
-      -- or it might have just been created by 'add_vehicle').
-      turrets[controller.turret.unit_number] = nil;
-    end;
+  -- And player characters, so we can avoid running them over.
+  for _, player in ipairs(game.surfaces[1].find_entities_filtered{name = "player"}) do
+    found_a_vehicle(player, turrets);
   end;
 
   -- Destroy any unassociated turrets.  There should never be any, but
@@ -228,6 +246,7 @@ local function find_vehicles(tick)
     t.destroy();
   end;
 end;
+
 
 -- Find the vehicle controller among 'controllers' that is commanding
 -- them, if any.
@@ -399,7 +418,8 @@ local function predict_approach(p1, v1, p2, v2, dist)
 end;
 
 -- Return flags describing what is necessary for 'controller.vehicle'
--- to avoid colliding with one of the 'controllers'.
+-- to avoid colliding with one of the 'controllers'.  'controller' is
+-- known to be controlling a robotank entity.
 local function collision_avoidance(tick, controllers, controller)
   local cannot_turn = false;
   local must_brake = false;
@@ -418,7 +438,7 @@ local function collision_avoidance(tick, controllers, controller)
         -- refresh the list of nearby vehicles.
         local approach_ticks, approach_angle = predict_approach(
           other.vehicle.position,
-          vehicle_velocity(other.vehicle),
+          entity_velocity(other.vehicle),
           v.position,
           vehicle_velocity(v),
           20);
@@ -442,7 +462,7 @@ local function collision_avoidance(tick, controllers, controller)
     -- contact occur?
     local approach_ticks, approach_angle = predict_approach(
       other.vehicle.position,
-      vehicle_velocity(other.vehicle),
+      entity_velocity(other.vehicle),
       v.position,
       vehicle_velocity(v),
       4);
@@ -488,7 +508,7 @@ local function can_reverse(tick, controller)
     -- close, and in which direction would contact occur?
     local approach_ticks, approach_angle = predict_approach(
       other.vehicle.position,
-      vehicle_velocity(other.vehicle),
+      entity_velocity(other.vehicle),
       v.position,
       vehicle_velocity_if_speed(v, -0.1),
       4);
@@ -816,8 +836,12 @@ end;
 
 -- The vehicle associated with this controller is going away or has
 -- already done so.  Remove the turret if it is still valid, then
--- remove the controller from all data structures.
-local function remove_vehicle_controller(controller)
+-- remove the controller from all data structures.  Beware that the
+-- vehicle may be invalid here.
+local function remove_vehicle_controller(force, controller)
+  -- Make sure 'force' is a string since that is what my table use.
+  local force = string_or_name_of(force);
+
   -- Destroy turret.
   if (controller.turret ~= nil and controller.turret.valid) then
     controller.turret.destroy();
@@ -825,7 +849,6 @@ local function remove_vehicle_controller(controller)
   end;
 
   -- Remove references in the main table.
-  local force = string_or_name_of(controller.vehicle.force);
   local controllers = global.force_to_controllers[force];
   for unit_number, other in pairs(controllers) do
     if (other == controller) then
@@ -844,6 +867,34 @@ local function remove_vehicle_controller(controller)
     refresh_commander(force, controllers);
   end;
 end;
+
+-- Remove from our tables for any references to invalid entities.
+--
+-- Normally, entity removal is handled through events, but I want
+-- a backup procedure now that I am also tracking player characters
+-- since I don't fully understand their lifecycle.
+local function remove_invalid_entities()
+  for force, controllers in pairs(global.force_to_controllers) do
+    for unit_number, controller in pairs(controllers) do
+      if (not controller.vehicle.valid) then
+        log("Removing invalid vehicle " .. unit_number .. ".");
+        remove_vehicle_controller(force, controller);
+      end;
+    end;
+  end;
+
+  for force, controller in pairs(global.force_to_commander_controller) do
+    if (not controller.vehicle.valid) then
+      -- This can only happen if somehow the commander was not among
+      -- the controllers scanned in the loop above, since if it was,
+      -- it would already have been removed from the commander table
+      -- as well.
+      log("Removing invalid commander of force \"" .. force .. "\".");
+      remove_vehicle_controller(force, controller);
+    end;
+  end;
+end;
+
 
 -- Do all per-tick updates for an entire force.
 --
@@ -954,10 +1005,17 @@ local function update_robotank_force_on_tick(tick, force, controllers)
 end;
 
 script.on_event(defines.events.on_tick, function(e)
-  -- On the very first tick after loading, initialize the vehicle table.
-  if (not found_vehicles) then
-    found_vehicles = true;
-    find_vehicles(e.tick);
+  if (must_rescan_world) then
+    if (must_initialize_loaded_global_data) then
+      log("RoboTank: running first tick initialization on tick " .. e.tick);
+      must_initialize_loaded_global_data = false;
+      initialize_loaded_global_data();
+    end;
+
+    log("RoboTank: rescanning world");
+    must_rescan_world = false;
+    remove_invalid_entities();
+    find_unassociated_vehicles();
   end;
 
   -- For each force, update the robotanks.
@@ -999,7 +1057,7 @@ script.on_event({defines.events.on_player_mined_entity, defines.events.on_robot_
           end;
         end;
 
-        remove_vehicle_controller(controller);
+        remove_vehicle_controller(e.entity.force, controller);
       else
         -- I am supposed to be keeping track of all vehicles.
         log("But the vehicle was not in my tables?");
@@ -1012,15 +1070,15 @@ script.on_event({defines.events.on_player_mined_entity, defines.events.on_robot_
 -- Evidently, when this is called, the entity is still valid.
 script.on_event({defines.events.on_entity_died},
   function(e)
-    if (e.entity.type == "car") then
-      log("Vehicle " .. e.entity.unit_number .. " died.");
+    if (e.entity.type == "car" or e.entity.type == "player") then
+      log("Vehicle or player " .. e.entity.unit_number .. " died.");
 
       local controller = find_vehicle_controller(e.entity);
       if (controller) then
-        remove_vehicle_controller(controller);
+        remove_vehicle_controller(e.entity.force, controller);
       else
-        -- I am supposed to be keeping track of all vehicles.
-        log("But the vehicle was not in my tables?");
+        -- I am supposed to be keeping track of all vehicles and players.
+        log("But the vehicle or player was not in my tables?");
       end;
 
     elseif (e.entity.name == "robotank-turret-entity") then
@@ -1043,6 +1101,32 @@ script.on_event({defines.events.on_entity_died},
     end;
   end
 );
+
+
+-- Called when an event fires that might change the set of player
+-- characters in the world.  I say "might" because I do not understand
+-- the lifecycle and don't have an easy way to test things like
+-- multiplayer.
+local function on_players_changed()
+  log("RoboTank: on_players_changed");
+
+  -- At this point, a removed player entity is not invalid yet.  We
+  -- need to wait for the start of the next tick to detect that it is
+  -- invalid.
+  must_rescan_world = true;
+end;
+
+script.on_event(
+  {
+    -- Events that seem like they might be relevant.
+    defines.events.on_player_created,
+    defines.events.on_player_died,
+    defines.events.on_player_joined_game,
+    defines.events.on_player_left_game,
+    defines.events.on_player_removed,
+    defines.events.on_player_respawned,
+  },
+  on_players_changed);
 
 
 ----------------------------- Test code ------------------------------
