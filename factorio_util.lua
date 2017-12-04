@@ -50,6 +50,24 @@ function normalize_orientation(o)
   return o;
 end;
 
+-- Given two orientations in [0,1], compute o1-o2, then normalize
+-- the result to [-0.5, 0.5].
+function orientation_difference(o1, o2)
+  local orient_diff = o1 - o2;
+  if (orient_diff > 0.5) then
+    orient_diff = orient_diff - 1;
+  elseif (orient_diff < -0.5) then
+    orient_diff = orient_diff + 1;
+  end;
+  return orient_diff;
+end;
+
+-- Absolute value of orientation difference, useful for testing whether
+-- two orientations are close to one another.  Result is in [0, 0.5].
+function absolute_orientation_difference(o1, o2)
+  return math.abs(orientation_difference(o1, o2));
+end;
+
 -- Convert orientation in [0,1] where 0 is North, 0.25 is East, etc.,
 -- to radians in [-pi/2, 3*pi/2] where 0 is East, pi/2 is South, etc.
 function orientation_to_radians(orientation)

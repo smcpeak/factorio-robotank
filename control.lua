@@ -62,6 +62,12 @@ local function new_entity_controller(e)
     -- will try to reverse out.
     stuck_since = nil,
 
+    -- If stuck_since is not nil, then this records the vehicle
+    -- orientation at the time we became stuck.  This is used to
+    -- avoid cases where the vehicle decides it is stuck even
+    -- though it is in the midst of turning.
+    stuck_orientation = nil;
+
     -- When not nil, the vehicle has decided to reverse out of its
     -- current position until the indicated tick count.  When that
     -- tick passes, the vehicle will first brake until it is stopped,
@@ -482,8 +488,8 @@ local function collision_avoidance(tick, controllers, controller)
       vehicle_velocity(v),
       4);
     local approach_orientation = radians_to_orientation(approach_angle);
-    local relative_orientation = normalize_orientation(approach_orientation - v.orientation);
-    if (approach_ticks ~= nil and (relative_orientation <= 0.25 or relative_orientation >= 0.75)) then
+    local abs_orient_diff = absolute_orientation_difference(approach_orientation, v.orientation);
+    if (approach_ticks ~= nil and abs_orient_diff <= 0.25) then
       -- Contact would occur in front, so if it is imminent, then we
       -- need to slow down.
       if (approach_ticks < v.speed * 1000) then
@@ -494,14 +500,14 @@ local function collision_avoidance(tick, controllers, controller)
     end;
 
     --[[
-    if (other.entity.passenger == nil and tick % 10 == 0) then
+    if ((tick % 10 == 0) and (other.entity.type ~= "car" or other.entity.passenger == nil)) then
       log("" .. controller.entity.unit_number ..
           " approaching " .. other.entity.unit_number ..
           ": dist=" .. math.sqrt(dist_sq) ..
           " ticks=" .. serpent.line(approach_ticks) ..
           " angle=" .. serpent.line(approach_angle) ..
           --" approach_orientation=" .. serpent.line(approach_orientation) ..
-          " relorient=" .. serpent.line(relative_orientation) ..
+          " adorient=" .. serpent.line(abs_orient_diff) ..
           " speed=" .. v.speed ..
           " cannot_turn=" .. serpent.line(cannot_turn) ..
           " must_brake=" .. serpent.line(must_brake) ..
@@ -528,15 +534,15 @@ local function can_reverse(tick, controller)
       vehicle_velocity_if_speed(v, -0.1),
       4);
     local approach_orientation = radians_to_orientation(approach_angle);
-    local relative_orientation = normalize_orientation(approach_orientation - v.orientation);
-    if (approach_ticks ~= nil and (0.25 <= relative_orientation and relative_orientation <= 0.75)) then
+    local abs_orient_diff = absolute_orientation_difference(approach_orientation, v.orientation);
+    if (approach_ticks ~= nil and abs_orient_diff > 0.25) then
       -- Contact would occur in back; is it soon?
       if (approach_ticks < 100) then
         if (tick % 60 == 0) then
           log("Vehicle " .. v.unit_number ..
               " cannot reverse because it would hit entity " ..
               other.entity.unit_number ..
-              " at orientation " .. relative_orientation ..
+              " at abs_orient_diff " .. abs_orient_diff ..
               " in " .. approach_ticks .. " ticks.");
         end;
         return false;
@@ -654,17 +660,11 @@ local function drive_vehicle(tick, controllers, commander_vehicle,
     local desired_orientation = vector_to_orientation(desired_velocity);
 
     -- Difference with current orientation, in [-0.5, 0.5].
-    local diff_orient = v.orientation - desired_orientation;
-    if (diff_orient > 0.5) then
-      diff_orient = diff_orient - 1;
-    elseif (diff_orient < -0.5) then
-      diff_orient = diff_orient + 1;
-    end;
-
-    if (diff_orient > 0.1) then
+    local orient_diff = orientation_difference(v.orientation, desired_orientation);
+    if (orient_diff > 0.1) then
       -- Coast and turn left.
       turn = defines.riding.direction.left;
-    elseif (diff_orient < -0.1) then
+    elseif (orient_diff < -0.1) then
       -- Coast and turn right.
       turn = defines.riding.direction.right;
     else
@@ -673,16 +673,16 @@ local function drive_vehicle(tick, controllers, commander_vehicle,
       local ROTATION_RATE = 0.0035;
 
       -- Turn if we're not quite in line, but avoid oversteering.
-      if (diff_orient > ROTATION_RATE * DRIVE_FREQUENCY) then
+      if (orient_diff > ROTATION_RATE * DRIVE_FREQUENCY) then
         turn = defines.riding.direction.left;
-      elseif (diff_orient > ROTATION_RATE) then
+      elseif (orient_diff > ROTATION_RATE) then
         turn = defines.riding.direction.left;
-        controller.small_turn_ticks = math.floor(diff_orient / ROTATION_RATE);
-      elseif (diff_orient < -(ROTATION_RATE * DRIVE_FREQUENCY)) then
+        controller.small_turn_ticks = math.floor(orient_diff / ROTATION_RATE);
+      elseif (orient_diff < -(ROTATION_RATE * DRIVE_FREQUENCY)) then
         turn = defines.riding.direction.right;
-      elseif (diff_orient < -ROTATION_RATE) then
+      elseif (orient_diff < -ROTATION_RATE) then
         turn = defines.riding.direction.right;
-        controller.small_turn_ticks = math.floor(diff_orient / -ROTATION_RATE);
+        controller.small_turn_ticks = math.floor(orient_diff / -ROTATION_RATE);
       end;
 
       -- Decide whether to accelerate, coast, or brake.
@@ -738,6 +738,7 @@ local function drive_vehicle(tick, controllers, commander_vehicle,
   if (desired_speed < 0.001) then
     -- At destination, not stuck.
     controller.stuck_since = nil;
+    controller.stuck_orientation = nil;
     controller.reversing_until = nil;
   elseif (math.abs(v.speed) < 0.005 and not reversing) then
     if (controller.stuck_since == nil) then
@@ -745,13 +746,25 @@ local function drive_vehicle(tick, controllers, commander_vehicle,
       -- We might not even really be stuck; speed sometimes drops
       -- quite low even when cruising.
       controller.stuck_since = tick;
+      controller.stuck_orientation = v.orientation;
     elseif (controller.stuck_since + 300 <= tick) then
       -- Have been stuck for a while.  Periodically check if we
       -- can safely reverse out of here.
       if (tick % 60 == 0) then
-        if (can_reverse(tick, controller)) then
+        -- Double-check that we really are stuck by comparing the
+        -- orientation.
+        local orient_diff =
+          absolute_orientation_difference(controller.stuck_orientation, v.orientation);
+        if (orient_diff > 0.01) then
+          -- We have successfully turned since becoming stopped, so
+          -- we are not really stuck.  Reset the reference orientation
+          -- and wait another 60 ticks.
+          log("Vehicle " .. unit_number .. " is stopped but turning, so not really stuck.");
+          controller.stuck_orientation = v.orientation;
+        elseif (can_reverse(tick, controller)) then
           log("Vehicle " .. unit_number .. " is stuck, trying to reverse out of it.");
           controller.stuck_since = nil;
+          controller.stuck_orientation = nil;
           controller.reversing_until = tick + 60;
           reversing = true;
         else
@@ -762,6 +775,7 @@ local function drive_vehicle(tick, controllers, commander_vehicle,
   else
     -- Moving or reversing, not stuck.
     controller.stuck_since = nil;
+    controller.stuck_orientation = nil;
   end;
 
   -- Apply the collision and stuck avoidance flags to the driving
