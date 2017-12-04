@@ -533,18 +533,6 @@ local function can_reverse(tick, controller)
 end;
 
 
--- Get the number of robotanks in 'controllers'.
-local function num_robotanks(controllers)
-  local ct = 0;
-  for _, controller in pairs(controllers) do
-    if (controller.vehicle.name == "robotank-entity") then
-      ct = ct + 1;
-    end;
-  end;
-  return ct;
-end;
-
-
 -- Given a commander vehicle and a robotank vehicle, where the robotank
 -- is joining the commander's squad, determine the position of the
 -- robotank vehicle relative to the commander.  That will become its
