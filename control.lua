@@ -921,9 +921,20 @@ local function update_robotank_force_on_tick(tick, force, controllers)
         -- there is no commander, I do it less frequently and simply
         -- accept the problems since just iterating and checking the
         -- speed has measurable cost.
-        if (check_speed and controller.vehicle.speed ~= 0) then
-          if (not controller.turret.teleport(controller.vehicle.position)) then
-            log("Failed to teleport turret!");
+        if (check_speed) then
+          local moved = (controller.vehicle.speed ~= 0);
+
+          if (tick_60 and not moved) then
+            -- If the vehicle is on a transport belt, its speed is zero
+            -- but it still moves.  So, check for movement by comparing
+            -- positions too, but less frequently.
+            moved = not equal_vec(controller.turret.position, controller.vehicle.position);
+          end;
+
+          if (moved) then
+            if (not controller.turret.teleport(controller.vehicle.position)) then
+              log("Failed to teleport turret!");
+            end;
           end;
         end;
 
