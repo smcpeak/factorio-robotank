@@ -553,6 +553,15 @@ local function drive_vehicle(tick, controllers, commander_vehicle,
       world_position_to_formation_position(commander_vehicle, v);
   end;
 
+  -- Skip any tank that has a passenger so it is possible for a player
+  -- to jump in a tank and help it get unstuck.  This opens up a minor
+  -- exploit, because the hidden turret will still shoot, so the player
+  -- can drive the robotank into battle and have effectively double the
+  -- firepower of a normal tank.  Oh well.
+  if (controller.vehicle.passenger ~= nil) then
+    return;
+  end;
+
   -- Where does this vehicle want to be?
   local desired_position =
     formation_position_to_world_position(commander_vehicle, controller.formation_position);
