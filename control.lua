@@ -612,11 +612,10 @@ local function drive_vehicle(tick, controllers, commander_vehicle,
       world_position_to_formation_position(commander_vehicle, v);
   end;
 
-  -- Skip any tank that has a passenger so it is possible for a player
-  -- to jump in a tank and help it get unstuck.  This opens up a minor
-  -- exploit, because the hidden turret will still shoot, so the player
-  -- can drive the robotank into battle and have effectively double the
-  -- firepower of a normal tank.  Oh well.
+  -- Skip driving any tank that has a passenger so it is possible for
+  -- a player to jump in a robotank and help it get unstuck.  (The
+  -- automatic turret will be disabled temporarily; see
+  -- on_player_driving_changed_state.)
   if (v.passenger ~= nil) then
     return;
   end;
@@ -1156,6 +1155,16 @@ local function on_player_driving_changed_state(event)
     if (character.vehicle ~= nil) then
       log("Player character " .. character.unit_number ..
           " has entered vehicle " .. character.vehicle.unit_number .. ".");
+
+      local controller = find_entity_controller(character.vehicle);
+      if (controller ~= nil and controller.turret ~= nil) then
+        -- If the player jumps into a robotank, disable its turret.
+        -- That prevents a minor exploit where both the turret and
+        -- the player-controlled tank machine gun could fire, thus
+        -- effectively doubling the firepower of one vehicle.
+        log("Disabling turret of vehicle " .. controller.entity.unit_number .. ".");
+        controller.turret.active = false;
+      end;
     else
       log("Player character " .. character.unit_number ..
           " has exited a vehicle.");
@@ -1166,6 +1175,17 @@ local function on_player_driving_changed_state(event)
       -- player jumps out and then I can make a controller for the
       -- character entity.
       find_or_create_entity_controller(character);
+
+      -- Re-activate any disabled turrets.
+      local controllers = global.force_to_controllers[string_or_name_of(character.force)];
+      for unit_number, controller in pairs(controllers) do
+        if (controller.turret ~= nil and
+            controller.turret.active == false and
+            controller.entity.passenger == nil) then
+          log("Re-enabling turret of vehicle " .. controller.entity.unit_number .. ".");
+          controller.turret.active = true;
+        end;
+      end;
     end;
   end;
 end;
