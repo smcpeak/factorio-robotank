@@ -64,6 +64,15 @@ local function new_vehicle_controller(v)
     -- near enough to this one to be relevant for collision avoidance.
     -- When this is nil, it needs to be recomputed.
     nearby_controllers = nil,
+
+    -- When this is non-nil, it is the number of ticks for which we
+    -- want to keep turning, after which we will straighten the wheel.
+    -- This is useful because, for speed, the driving algorithm does
+    -- not run on every tick, but we still want to be able to turn
+    -- for as little as one tick.  One reason why is, in a tightly
+    -- packed formation of tanks, crude steering leads to unnecessary
+    -- mutual interference as the tanks drift into each other.
+    small_turn_ticks = nil,
   };
 end;
 
@@ -547,6 +556,27 @@ end;
 local function drive_vehicle(tick, controllers, commander_vehicle,
                              commander_velocity, unit_number, controller)
   local v = controller.vehicle;
+
+  -- Number of ticks between invocations of the driving algorithm.
+  -- We are deciding what to do for this many ticks.
+  local DRIVE_FREQUENCY = 5;
+
+  if (tick % DRIVE_FREQUENCY ~= 0) then
+    -- Not driving on this tick.  But we might be completing a small turn.
+    if (controller.small_turn_ticks ~= nil) then
+      controller.small_turn_ticks = controller.small_turn_ticks - 1;
+      if (controller.small_turn_ticks == 0) then
+        -- Finished making a small turn, straighten the wheel.
+        v.riding_state = {
+          acceleration = v.riding_state.acceleration,
+          direction = defines.riding.direction.straight;
+        };
+        controller.small_turn_ticks = nil;
+      end;
+    end;
+    return;
+  end;
+
   if (controller.formation_position == nil) then
     -- This robotank is joining the formation.
     controller.formation_position =
@@ -579,35 +609,28 @@ local function drive_vehicle(tick, controllers, commander_vehicle,
   local cur_velocity = vehicle_velocity(v);
 
   -- What will the displacement be if we stand still and the commander
-  -- maintains speed and direction?
-  local next_disp = add_vec(displacement, commander_velocity);
+  -- maintains speed and direction for LOOKAHEAD ticks?
+  local LOOKAHEAD = 100;
+  local next_disp = add_vec(displacement, multiply_vec(commander_velocity, LOOKAHEAD));
 
-  -- What will be the displacement in one tick if we maintain speed
-  -- and direction?
-  local projected_straight_disp = subtract_vec(next_disp, cur_velocity);
-  local projected_straight_dist = magnitude(projected_straight_disp);
-  if (projected_straight_dist < 0.1) then
-    -- We are or will be close to the target position.  Is the commander
-    -- stopped?  (The test here is not for commander speed is zero because
-    -- if the player jumps out and lets the vehicle coast to a stop, it
-    -- takes about a minute for friction to get the speed to zero, even
-    -- though all visible movement stops in a few seconds.)
-    if ((math.abs(commander_vehicle.speed) < 1e-3) and v.speed > 0) then
-      -- Hack: Commander is stopped, we should stop too.  (I would prefer that
-      -- this behavior emerge naturally without making a special case.  But as
-      -- things stand, without this, the tanks will slowly circle their target
-      -- endlessly if I do not force them to stop.)
+  -- The desired velocity is that which will bring the displacement
+  -- to zero in LOOKAHEAD ticks.
+  local desired_velocity = multiply_vec(next_disp, 1 / LOOKAHEAD);
+  local desired_speed = magnitude(desired_velocity);
+
+  if (desired_speed < 0.001) then
+    -- Regard this as a desire to stop.
+    if (v.speed > 0) then
       pedal = defines.riding.acceleration.braking;
     else
-      -- Just coast straight.  Among the situations this applies is when
-      -- the tank is in its intended spot in the formation, moving at the
-      -- same speed as the commander.
+      -- We are stopped and pedal is already 'nothing'.
     end;
-  else
-    -- Compute orientation in [0,1] that will reduce displacement.
-    local desired_orientation = vector_to_orientation(projected_straight_disp);
 
-    -- Difference with current orientation.
+  else
+    -- Compute orientation in [0,1].
+    local desired_orientation = vector_to_orientation(desired_velocity);
+
+    -- Difference with current orientation, in [-0.5, 0.5].
     local diff_orient = v.orientation - desired_orientation;
     if (diff_orient > 0.5) then
       diff_orient = diff_orient - 1;
@@ -622,22 +645,24 @@ local function drive_vehicle(tick, controllers, commander_vehicle,
       -- Coast and turn right.
       turn = defines.riding.direction.right;
     else
-      -- Turn if we're not quite in line, then decide whether
-      -- to accelerate.
-      if (diff_orient > 0.01) then
+      -- This number comes from the tank's data definition.  It is the
+      -- change in orientation per tick when turning.
+      local ROTATION_RATE = 0.0035;
+
+      -- Turn if we're not quite in line, but avoid oversteering.
+      if (diff_orient > ROTATION_RATE * DRIVE_FREQUENCY) then
         turn = defines.riding.direction.left;
-      elseif (diff_orient < -0.01) then
+      elseif (diff_orient > ROTATION_RATE) then
+        turn = defines.riding.direction.left;
+        controller.small_turn_ticks = math.floor(diff_orient / ROTATION_RATE);
+      elseif (diff_orient < -(ROTATION_RATE * DRIVE_FREQUENCY)) then
         turn = defines.riding.direction.right;
+      elseif (diff_orient < -ROTATION_RATE) then
+        turn = defines.riding.direction.right;
+        controller.small_turn_ticks = math.floor(diff_orient / -ROTATION_RATE);
       end;
 
-      -- Desired speed as a function of projected distance to target.
-      -- This has a quadratic component since stopping distance does
-      -- as well (although I do not explicitly calculate that).  The
-      -- coefficients were determined through crude experimentation.
-      local desired_speed =
-        projected_straight_dist * 0.01 +
-        projected_straight_dist * projected_straight_dist * 0.001;
-
+      -- Decide whether to accelerate, coast, or brake.
       if (desired_speed > v.speed) then
         pedal = defines.riding.acceleration.accelerating;
       elseif (desired_speed < v.speed - 0.001) then
@@ -687,7 +712,7 @@ local function drive_vehicle(tick, controllers, commander_vehicle,
   -- about 0.003 once every 300 ticks (coincidentally the same as my
   -- stuck timer duration), even though it is not moving.  I think that
   -- is an artifact of Factorio collision mechanics.
-  if (projected_straight_dist < 0.1) then
+  if (desired_speed < 0.001) then
     -- At destination, not stuck.
     controller.stuck_since = nil;
     controller.reversing_until = nil;
