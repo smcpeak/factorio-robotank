@@ -1,6 +1,7 @@
 TODO list for RoboTank mod
 
 - Sometimes the reversing behavior kicks in while the tank is turning successfully.
+- Fix exploit of double-shooting robotank when manually driven by disabling turret temporarily.
 - Questionable behavior when multiple transmitters present
 - Optimize collision detection to only run every other frame?
 - Organize robotanks into squads

@@ -199,22 +199,27 @@ local function initialize_loaded_global_data()
 end;
 
 
+-- If there is already a controller for 'entity', return it.  Otherwise,
+-- make a new controller and return that.
+local function find_or_create_entity_controller(entity)
+  local controller = find_entity_controller(entity);
+  if (controller ~= nil) then
+    log("Found existing controller object for unit " .. entity.unit_number);
+  else
+    log("Unit number " .. entity.unit_number ..
+        " has no controller, making a new one.");
+    controller = add_entity(entity);
+  end;
+  return controller;
+end;
+
+
 -- Called during 'find_unassociated_entities' when one is found.
-local function found_an_entity(v, turrets)
-  --log("found entity: " .. serpent.block(entity_info(v)));
+local function found_an_entity(e, turrets)
+  --log("found entity: " .. serpent.block(entity_info(e)));
 
   -- See if we already know about this entity.
-  local force = string_or_name_of(v.force);
-  local controller = nil;
-  if (global.force_to_controllers[force] ~= nil) then
-    controller = global.force_to_controllers[force][v.unit_number];
-  end;
-  if (controller ~= nil) then
-    log("Found existing controller object for unit " .. v.unit_number);
-  else
-    log("Unit number " .. v.unit_number .. " has no controller.");
-    controller = add_entity(v);
-  end;
+  local controller = find_or_create_entity_controller(e);
 
   if (controller.turret ~= nil) then
     -- This turret is now accounted for (it might have existed before,
@@ -1111,12 +1116,16 @@ local function on_players_changed()
   -- At this point, a removed player entity is not invalid yet.  We
   -- need to wait for the start of the next tick to detect that it is
   -- invalid.
+  --
+  -- Note that the scan is quite slow, so I only want to do this for
+  -- things that are infrequent.
   must_rescan_world = true;
 end;
 
 script.on_event(
   {
     -- Events that seem like they might be relevant.
+    defines.events.on_player_changed_surface,
     defines.events.on_player_created,
     defines.events.on_player_died,
     defines.events.on_player_joined_game,
@@ -1125,6 +1134,30 @@ script.on_event(
     defines.events.on_player_respawned,
   },
   on_players_changed);
+
+
+local function on_player_driving_changed_state(event)
+  local character = game.players[event.player_index].character;
+  if (character ~= nil) then
+    if (character.vehicle ~= nil) then
+      log("Player character " .. character.unit_number ..
+          " has entered vehicle " .. character.vehicle.unit_number .. ".");
+    else
+      log("Player character " .. character.unit_number ..
+          " has exited a vehicle.");
+
+      -- If I load my mod in a game where the player character is inside
+      -- a vehicle, the initial scan does not see it, presumably because
+      -- it is not considered to be on the surface.  So, I wait until the
+      -- player jumps out and then I can make a controller for the
+      -- character entity.
+      find_or_create_entity_controller(character);
+    end;
+  end;
+end;
+
+script.on_event({defines.events.on_player_driving_changed_state},
+  on_player_driving_changed_state);
 
 
 ----------------------------- Test code ------------------------------
