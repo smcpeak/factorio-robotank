@@ -1,13 +1,10 @@
 TODO list for RoboTank mod
 
-- I want to be able to see fuel and ammo by hovering mouse on a robotank.
-- Rename 'vehicle' to 'entity'.
 - Sometimes the reversing behavior kicks in while the tank is turning successfully.
 - Questionable behavior when multiple transmitters present
 - Optimize collision detection to only run every other frame?
 - Organize robotanks into squads
 - Limit the number of tanks in a squad
-  - Means saving some data persistently
 - Research to increase the squad size limit
 - Put robotanks into idle mode for better performance when not active
 - Range limit on the transmitter
@@ -15,8 +12,12 @@ TODO list for RoboTank mod
 - Press key to arrange squad in a line?
 - Experiment on larger maps
 - Sticker on robotanks not in a squad?
+  - or low on ammo, or fuel, or stuck?
 - Open gate when a robotank approaches
 
+Evidently infeasible:
+
+- I want to be able to see fuel and ammo by hovering mouse on a robotank.
 
 
 EOF
