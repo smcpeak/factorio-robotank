@@ -678,9 +678,12 @@ local function drive_vehicle(tick, controllers, commander_vehicle,
   local desired_velocity = multiply_vec(next_disp, 1 / LOOKAHEAD);
   local desired_speed = magnitude(desired_velocity);
 
+  -- Copy vehicle speed into a local for better performance.
+  local v_speed = v.speed;
+
   if (desired_speed < 0.001) then
     -- Regard this as a desire to stop.
-    if (v.speed > 0) then
+    if (v_speed > 0) then
       pedal = defines.riding.acceleration.braking;
     else
       -- We are stopped and pedal is already 'nothing'.
@@ -717,9 +720,9 @@ local function drive_vehicle(tick, controllers, commander_vehicle,
       end;
 
       -- Decide whether to accelerate, coast, or brake.
-      if (desired_speed > v.speed) then
+      if (desired_speed > v_speed) then
         pedal = defines.riding.acceleration.accelerating;
-      elseif (desired_speed < v.speed - 0.001) then
+      elseif (desired_speed < v_speed - 0.001) then
         pedal = defines.riding.acceleration.braking;
       end;
     end;
@@ -739,7 +742,7 @@ local function drive_vehicle(tick, controllers, commander_vehicle,
     if (controller.reversing_until > tick) then
       -- Continue reversing.
     else
-      if (v.speed ~= 0) then
+      if (v_speed ~= 0) then
         -- Brake until we are stopped.
         stopping = true;
       else
@@ -771,7 +774,7 @@ local function drive_vehicle(tick, controllers, commander_vehicle,
     controller.stuck_since = nil;
     controller.stuck_orientation = nil;
     controller.reversing_until = nil;
-  elseif (math.abs(v.speed) < 0.005 and not reversing) then
+  elseif (math.abs(v_speed) < 0.005 and not reversing) then
     if (controller.stuck_since == nil) then
       -- Just became stuck, wait a bit to see if things clear up.
       -- We might not even really be stuck; speed sometimes drops
@@ -844,7 +847,7 @@ local function drive_vehicle(tick, controllers, commander_vehicle,
     log("Vehicle " .. unit_number ..
         ": pedal=" .. pedal_string ..
         " turn=" .. turn_string ..
-        " speed=" .. v.speed);
+        " speed=" .. v_speed);
   end;
   --]]
 end;
