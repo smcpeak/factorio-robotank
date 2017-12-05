@@ -1033,6 +1033,9 @@ local function update_robotank_force_on_tick(tick, force, controllers)
           end;
 
           if (moved) then
+            -- In my main performance test case with 40 tanks, once the
+            -- squad is moving, about 10% of the time in the mod is spent
+            -- in this line of code, teleporting turrets.
             if (not controller.turret.teleport(controller.entity.position)) then
               log("Failed to teleport turret!");
             end;
