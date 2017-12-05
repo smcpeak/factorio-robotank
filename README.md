@@ -72,3 +72,9 @@ There is currently no limit on transmitter range.  Consequently, if you
 make a RoboTank and forget about it, then later make a commander on the
 other side of your base, the forgotten RoboTank might go on an inadvertent
 rampage inside your base before you notice.
+
+Links
+=====
+Factorio mod portal page: https://mods.factorio.com/mods/smcpeak/RoboTank
+
+Forum discussion page: https://forums.factorio.com/viewtopic.php?f=93&t=54395
