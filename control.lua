@@ -1123,7 +1123,7 @@ script.on_event({defines.events.on_player_mined_entity, defines.events.on_robot_
 -- Evidently, when this is called, the entity is still valid.
 script.on_event({defines.events.on_entity_died},
   function(e)
-    if (e.entity.type == "car" or e.entity.type == "player") then
+    if (e.entity.type == "car" or e.entity.name == "player") then
       log("Vehicle or player " .. e.entity.unit_number .. " died.");
 
       local controller = find_entity_controller(e.entity);

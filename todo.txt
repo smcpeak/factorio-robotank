@@ -1,6 +1,7 @@
 TODO list for RoboTank mod
 
 - Questionable behavior when multiple transmitters present
+- RoboTank research should also require advanced-electronics-2 since that is needed for blue circuit.
 - Organize robotanks into squads
   - Limit the number of tanks in a squad
   - Research to increase the squad size limit
