@@ -371,7 +371,8 @@ end;
 local function predict_approach(p1, v1, p2, v2, dist)
   -- Move p1 to the origin.
   p2 = subtract_vec(p2, p1);
-  if (mag_sq(p2) < 0.000001) then
+  local mag_sq_p2 = mag_sq(p2);
+  if (mag_sq_p2 < 0.000001) then
     -- Already on top of each other.
     return 0, 0;
   end;
@@ -379,7 +380,7 @@ local function predict_approach(p1, v1, p2, v2, dist)
   -- Current angle from p2 to p1.
   local angle_p2_to_p1 = math.atan2(-p2.y, -p2.x);
 
-  if (mag_sq(p2) < dist*dist) then
+  if (mag_sq_p2 < dist*dist) then
     -- Already in contact.
     return 0, angle_p2_to_p1;
   end;
@@ -446,7 +447,14 @@ local function collision_avoidance(tick, controllers, controller)
   local must_brake = false;
   local cannot_accelerate = false;
 
+  -- Hoist several quantities out of the loops below.  This significantly
+  -- improves speed, in part (I think) because crossing into C++ to get
+  -- attributes of C++ objects is slow.
   local v = controller.entity;
+  local v_position = v.position;
+  local v_velocity = vehicle_velocity(v);
+  local v_orientation = v.orientation;
+  local v_speed = v.speed;
 
   -- Periodically refresh the list of other entities near enough
   -- to this one to be considered by the per-tick collision analysis.
@@ -460,8 +468,8 @@ local function collision_avoidance(tick, controllers, controller)
         local approach_ticks, approach_angle = predict_approach(
           other.entity.position,
           entity_velocity(other.entity),
-          v.position,
-          vehicle_velocity(v),
+          v_position,
+          v_velocity,
           20);
         if (approach_ticks ~= nil and approach_ticks < 60) then
           table.insert(controller.nearby_controllers, other);
@@ -473,7 +481,8 @@ local function collision_avoidance(tick, controllers, controller)
   -- Scan nearby entities for collision potential.
   for _, other in ipairs(controller.nearby_controllers) do
     -- Are we too close to turn?
-    local dist_sq = mag_sq(subtract_vec(other.entity.position, v.position));
+    local other_entity_position = other.entity.position;
+    local dist_sq = mag_sq_subtract_vec(other_entity_position, v_position);
     if (dist_sq < 11.5) then      -- about 3.4 squared
       cannot_turn = true;
     end;
@@ -482,19 +491,19 @@ local function collision_avoidance(tick, controllers, controller)
     -- within 4 units of the other unit, and in which direction would
     -- contact occur?
     local approach_ticks, approach_angle = predict_approach(
-      other.entity.position,
+      other_entity_position,
       entity_velocity(other.entity),
-      v.position,
-      vehicle_velocity(v),
+      v_position,
+      v_velocity,
       4);
     local approach_orientation = radians_to_orientation(approach_angle);
-    local abs_orient_diff = absolute_orientation_difference(approach_orientation, v.orientation);
+    local abs_orient_diff = absolute_orientation_difference(approach_orientation, v_orientation);
     if (approach_ticks ~= nil and abs_orient_diff <= 0.25) then
       -- Contact would occur in front, so if it is imminent, then we
       -- need to slow down.
-      if (approach_ticks < v.speed * 1000) then
+      if (approach_ticks < v_speed * 1000) then
         must_brake = true;
-      elseif (approach_ticks < (v.speed + 0.02) * 2000) then     -- speed+0.02: Presumed effect of acceleration.
+      elseif (approach_ticks < (v_speed + 0.02) * 2000) then     -- speed+0.02: Presumed effect of acceleration.
         cannot_accelerate = true;
       end;
     end;

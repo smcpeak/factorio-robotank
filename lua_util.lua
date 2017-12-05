@@ -57,6 +57,16 @@ function magnitude(v)
   return math.sqrt(mag_sq(v));
 end;
 
+-- Magnitude squared of a difference between vectors.  This is
+-- measurably faster than mag_sq(subtract_vec(p1, p2)) because,
+-- I think, it avoids the overhead of creating an intermediate
+-- table.
+function mag_sq_subtract_vec(p1, p2)
+  local dx = p1.x - p2.x;
+  local dy = p1.y - p2.y;
+  return dx*dx + dy*dy;
+end;
+
 function normalize_vec(v)
   if ((v.x == 0) and (v.y == 0)) then
     return v;
@@ -77,9 +87,11 @@ end;
 -- system with +y up and counterclockwise angles, as well as the Factorio
 -- coordinate system with +y down and clockwise angles.
 function rotate_vec(v, radians)
+  local s = math.sin(radians);
+  local c = math.cos(radians);
   return {
-    x = v.x * math.cos(radians) - v.y * math.sin(radians),
-    y = v.x * math.sin(radians) + v.y * math.cos(radians),
+    x = v.x * c - v.y * s,
+    y = v.x * s + v.y * c,
   };
 end;
 
