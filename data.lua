@@ -118,6 +118,12 @@ end;
 -- difficult to replicate all of the attack behavior, and seems to be
 -- impossible to replicate the enemy aggro behavior.  So I attach a turret
 -- entity to the tank to perform those functions.
+--
+-- I *think* that my turret entity does *not* benefit from gun turret
+-- damage upgrades because those appear to be tied to the entity name.
+-- But, it should benefit from bullet damage and shooting speed.  All
+-- of that is what I intend.  I have not carefully tested any of it,
+-- however.
 local robotank_turret_entity = table.deepcopy(data.raw["ammo-turret"]["gun-turret"]);
 robotank_turret_entity.name = "robotank-turret-entity";
 
