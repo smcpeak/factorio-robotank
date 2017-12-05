@@ -993,7 +993,8 @@ local function update_robotank_force_on_tick(tick, force, controllers)
       if (check_turret_damage) then
         local damage = 1000 - controller.turret.health;
         if (damage > 0) then
-          if (controller.entity.health <= damage) then
+          local entity_health = controller.entity.health;
+          if (entity_health <= damage) then
             log("Fatal damage being transferred to robotank " .. unit_number .. ".");
             controller.turret.destroy();
             controller.entity.die();       -- Destroy game object and make an explosion.
@@ -1006,7 +1007,7 @@ local function update_robotank_force_on_tick(tick, force, controllers)
               error("Killing the vehicle did not cause it to be removed from tables!");
             end;
           else
-            controller.entity.health = controller.entity.health - damage;
+            controller.entity.health = entity_health - damage;
             controller.turret.health = 1000;
           end;
         end;
