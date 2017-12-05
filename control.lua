@@ -25,7 +25,7 @@ local must_rescan_world = true;
 -- Structure of 'global' is {
 --   -- Data version number, bumped when I make a change that requires
 --   -- special handling.
---   data_version = 2;
+--   data_version = 3;
 --
 --   -- Map from force to its controllers.  Each force's controllers
 --   -- are a map from unit_number to its entity_controller object.
@@ -151,6 +151,7 @@ local function initialize_loaded_global_data()
 
   if (global.data_version == 1) then
     log("RoboTank: Upgrading data_version 1 to 2.");
+
     -- I renamed "force_to_vehicles" to "force_to_controllers".
     global.force_to_controllers = global.force_to_vehicles;
     global.force_to_vehicles = nil;
@@ -285,14 +286,6 @@ local function find_commander_controller(controllers)
     end;
   end;
   return nil;
-end;
-
--- Return a position that is 'distance' units in front of 'ent',
--- taking accouot of its current orientation.
-local function pos_in_front_of(ent, distance)
-  local orient_vec = orientation_to_unit_vector(ent.orientation);
-  local displacement = multiply_vec(orient_vec, distance);
-  return add_vec(ent.position, displacement);
 end;
 
 -- Get the name of some item in the source inventory that can be
@@ -442,6 +435,9 @@ end;
 -- Return flags describing what is necessary for 'controller.entity'
 -- to avoid colliding with one of the 'controllers'.  'controller' is
 -- known to be controlling a robotank entity.
+--
+-- This function and its callees form the inner loop of this mod,
+-- where 70% of time is spent.
 local function collision_avoidance(tick, controllers, controller)
   local cannot_turn = false;
   local must_brake = false;
@@ -614,6 +610,8 @@ end;
 -- This means setting its 'riding_state', which is basically programmatic
 -- control of what the player can do with the WASD keys.  This is only
 -- called when we know there is a commander.
+--
+-- 85% of time in this mod is spent in this function and its callees.
 local function drive_vehicle(tick, controllers, commander_vehicle,
                              commander_velocity, unit_number, controller)
   local v = controller.entity;
