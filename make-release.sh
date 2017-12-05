@@ -23,7 +23,7 @@ if [ -f "$zipfile" ]; then
   rm "$zipfile" || exit
 fi
 
-echo zip -r "$zipfile" "$directory_name" -x '*.git*'
-exec zip -r "$zipfile" "$directory_name" -x '*.git*'
+echo zip -r "$zipfile" "$directory_name" -x '*/.git*' '*/rel/*' '*.xcf' '*.sh' '*/stubs.lua'
+exec zip -r "$zipfile" "$directory_name" -x '*/.git*' '*/rel/*' '*.xcf' '*.sh' '*/stubs.lua'
 
 # EOF
