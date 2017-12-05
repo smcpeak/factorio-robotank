@@ -456,8 +456,26 @@ local function collision_avoidance(tick, controllers, controller)
   local v_orientation = v.orientation;
   local v_speed = v.speed;
 
+  -- PERFORMANCE TESTING MODE:
+  -- When I am doing performance testing, I want to disable the nearby
+  -- controller refresh because it causes the per-tick time to have a
+  -- lot of noise.  I also want all controllers to be included so that
+  -- too is eliminated as a source of measurement variability.
+  --[[
+  if (controller.nearby_controllers == nil) then
+    controller.nearby_controllers = {};
+    for _, other in pairs(controllers) do
+      if (other.entity ~= v) then
+        table.insert(controller.nearby_controllers, other);
+      end;
+    end;
+  end;
+  --]]
+
+  -- NORMAL MODE:
   -- Periodically refresh the list of other entities near enough
   -- to this one to be considered by the per-tick collision analysis.
+  ---[[
   if (controller.nearby_controllers == nil or (tick % 60 == 0)) then
     controller.nearby_controllers = {};
     for _, other in pairs(controllers) do
@@ -477,6 +495,7 @@ local function collision_avoidance(tick, controllers, controller)
       end;
     end;
   end;
+  --]]
 
   -- Scan nearby entities for collision potential.
   for _, other in ipairs(controller.nearby_controllers) do
@@ -530,7 +549,11 @@ end;
 
 -- Is it safe for vehicle 'v' to reverse out of a stuck position?
 local function can_reverse(tick, controller)
+  -- Hoist some variables.
   local v = controller.entity;
+  local v_position = v.position;
+  local v_velocity_if_speed = vehicle_velocity_if_speed(v, -0.1);
+  local v_orientation = v.orientation;
 
   for _, other in ipairs(controller.nearby_controllers) do
     -- With this vehicle reversing at a nominal velocity, and the
@@ -539,11 +562,11 @@ local function can_reverse(tick, controller)
     local approach_ticks, approach_angle = predict_approach(
       other.entity.position,
       entity_velocity(other.entity),
-      v.position,
-      vehicle_velocity_if_speed(v, -0.1),
+      v_position,
+      v_velocity_if_speed,
       4);
     local approach_orientation = radians_to_orientation(approach_angle);
-    local abs_orient_diff = absolute_orientation_difference(approach_orientation, v.orientation);
+    local abs_orient_diff = absolute_orientation_difference(approach_orientation, v_orientation);
     if (approach_ticks ~= nil and abs_orient_diff > 0.25) then
       -- Contact would occur in back; is it soon?
       if (approach_ticks < 100) then
