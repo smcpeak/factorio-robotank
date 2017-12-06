@@ -78,3 +78,5 @@ Links
 Factorio mod portal page: https://mods.factorio.com/mods/smcpeak/RoboTank
 
 Forum discussion page: https://forums.factorio.com/viewtopic.php?f=93&t=54395
+
+Demo video on YouTube: https://www.youtube.com/watch?v=M64LyVkl6Ac
