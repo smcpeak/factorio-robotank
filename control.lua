@@ -25,7 +25,7 @@ local must_rescan_world = true;
 -- Structure of 'global' is {
 --   -- Data version number, bumped when I make a change that requires
 --   -- special handling.
---   data_version = 3;
+--   data_version = 4;
 --
 --   -- Map from force to its controllers.  Each force's controllers
 --   -- are a map from unit_number to its entity_controller object.
@@ -74,11 +74,6 @@ local function new_entity_controller(e)
     -- then clear the field and resume normal driving.
     reversing_until = nil,
 
-    -- Array of other entity controllers (on the same force) that are
-    -- near enough to this one to be relevant for collision avoidance.
-    -- When this is nil, it needs to be recomputed.
-    nearby_controllers = nil,
-
     -- When this is non-nil, it is the number of ticks for which we
     -- want to keep turning, after which we will straighten the wheel.
     -- This is useful because, for speed, the driving algorithm does
@@ -89,6 +84,23 @@ local function new_entity_controller(e)
     small_turn_ticks = nil,
   };
 end;
+
+-- Map from unit number to array of other entity controllers (on the
+-- same force) that are near enough to this one to be relevant for
+-- collision avoidance.  When the entry for a given unit number is nil,
+-- it needs to be recomputed.
+--
+-- This data is *not* stored in 'global' because it would take a lot of
+-- space in the save file.  The data is inherently quadratic in size,
+-- and the way Factorio serializes mod data adds another factor, such
+-- that the serialized size is cubic in the number of tanks.  That in
+-- turn causes the Lua interpreter to choke on the data when the save
+-- file is loaded ("function or expression too complex") when there are
+-- on the order of 40 tanks on the map.
+--
+-- Fortunately, it is easy to recompute after a load.
+local unit_number_to_nearby_controllers = {};
+
 
 -- Add an entity to our table and return its controller.
 local function add_entity(e)
@@ -180,9 +192,24 @@ local function initialize_loaded_global_data()
         end;
       end;
     end;
+    global.data_version = 3;
   end;
 
-  global.data_version = 3;
+  if (global.data_version == 3) then
+    log("RoboTank: Upgrading data_version 3 to 4.");
+
+    -- I removed "nearby_controllers", instead storing that outside
+    -- of 'global'.
+    if (global.force_to_controllers ~= nil) then
+      for _, controllers in pairs(global.force_to_controllers) do
+        for _, controller in pairs(controllers) do
+          controller.nearby_controllers = nil;
+        end;
+      end;
+    end;
+  end;
+
+  global.data_version = 4;
 
   if (global.force_to_commander_controller == nil) then
     log("force_to_commander_controller was nil, setting it to empty.");
@@ -434,11 +461,12 @@ end;
 
 -- Return flags describing what is necessary for 'controller.entity'
 -- to avoid colliding with one of the 'controllers'.  'controller' is
--- known to be controlling a robotank entity.
+-- known to be controlling a robotank entity and 'unit_number' is its
+-- unit number.
 --
 -- This function and its callees form the inner loop of this mod,
 -- where 70% of time is spent.
-local function collision_avoidance(tick, controllers, controller)
+local function collision_avoidance(tick, controllers, unit_number, controller)
   local cannot_turn = false;
   local must_brake = false;
   local cannot_accelerate = false;
@@ -458,11 +486,11 @@ local function collision_avoidance(tick, controllers, controller)
   -- lot of noise.  I also want all controllers to be included so that
   -- too is eliminated as a source of measurement variability.
   --[[
-  if (controller.nearby_controllers == nil) then
-    controller.nearby_controllers = {};
+  if (unit_number_to_nearby_controllers[unit_number] == nil) then
+    unit_number_to_nearby_controllers[unit_number] = {};
     for _, other in pairs(controllers) do
       if (other.entity ~= v) then
-        table.insert(controller.nearby_controllers, other);
+        table.insert(unit_number_to_nearby_controllers[unit_number], other);
       end;
     end;
   end;
@@ -472,8 +500,8 @@ local function collision_avoidance(tick, controllers, controller)
   -- Periodically refresh the list of other entities near enough
   -- to this one to be considered by the per-tick collision analysis.
   ---[[
-  if (controller.nearby_controllers == nil or (tick % 60 == 0)) then
-    controller.nearby_controllers = {};
+  if (unit_number_to_nearby_controllers[unit_number] == nil or (tick % 60 == 0)) then
+    unit_number_to_nearby_controllers[unit_number] = {};
     for _, other in pairs(controllers) do
       if (other.entity ~= v) then
         -- The other entity is considered nearby if it is or will be
@@ -486,7 +514,7 @@ local function collision_avoidance(tick, controllers, controller)
           v_velocity,
           20);
         if (approach_ticks ~= nil and approach_ticks < 60) then
-          table.insert(controller.nearby_controllers, other);
+          table.insert(unit_number_to_nearby_controllers[unit_number], other);
         end;
       end;
     end;
@@ -494,7 +522,7 @@ local function collision_avoidance(tick, controllers, controller)
   --]]
 
   -- Scan nearby entities for collision potential.
-  for _, other in ipairs(controller.nearby_controllers) do
+  for _, other in ipairs(unit_number_to_nearby_controllers[unit_number]) do
     -- Are we too close to turn?
     local other_entity_position = other.entity.position;
     local dist_sq = mag_sq_subtract_vec(other_entity_position, v_position);
@@ -544,14 +572,14 @@ local function collision_avoidance(tick, controllers, controller)
 end;
 
 -- Is it safe for vehicle 'v' to reverse out of a stuck position?
-local function can_reverse(tick, controller)
+local function can_reverse(tick, unit_number, controller)
   -- Hoist some variables.
   local v = controller.entity;
   local v_position = v.position;
   local v_velocity_if_speed = vehicle_velocity_if_speed(v, -0.1);
   local v_orientation = v.orientation;
 
-  for _, other in ipairs(controller.nearby_controllers) do
+  for _, other in ipairs(unit_number_to_nearby_controllers[unit_number]) do
     -- With this vehicle reversing at a nominal velocity, and the
     -- other entity at its current velocity, how long until we come
     -- close, and in which direction would contact occur?
@@ -729,7 +757,7 @@ local function drive_vehicle(tick, controllers, commander_vehicle,
   -- Having decided what we would want to do in the absence of
   -- obstacles, restrict behavior in order to avoid collisions.
   local cannot_turn, must_brake, cannot_accelerate =
-    collision_avoidance(tick, controllers, controller);
+    collision_avoidance(tick, controllers, unit_number, controller);
 
   -- Are we reversing out of a stuck position?  That overrides the
   -- decisions made above.
@@ -793,7 +821,7 @@ local function drive_vehicle(tick, controllers, commander_vehicle,
           -- and wait another 60 ticks.
           log("Vehicle " .. unit_number .. " is stopped but turning, so not really stuck.");
           controller.stuck_orientation = v.orientation;
-        elseif (can_reverse(tick, controller)) then
+        elseif (can_reverse(tick, unit_number, controller)) then
           log("Vehicle " .. unit_number .. " is stuck, trying to reverse out of it.");
           controller.stuck_since = nil;
           controller.stuck_orientation = nil;
@@ -907,7 +935,7 @@ local function remove_entity_controller(force, controller)
     else
       -- Refresh the nearby entities since the removed one might
       -- be in that list.
-      other.nearby_controllers = nil;
+      unit_number_to_nearby_controllers[unit_number] = nil;
     end;
   end;
 
