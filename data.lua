@@ -16,13 +16,14 @@ local robotank_technology = {
     },
   },
   icon = "__RoboTank__/graphics/technology/robotank-technology.png",
-  icon_size = 128,       -- Subtle!  This is needed for icons not in the "base" mod!
-  order = "e-c-c-2",     -- I want it after "tanks", but this does not work and I do not see why.
+  icon_size = 128,
+  order = "e-c-c-2",                   -- Right after "tanks".
   prerequisites = {
-    "robotics",
-    "tanks"
+    "advanced-electronics-2",          -- Processing unit.
+    "robotics",                        -- Flying robot frame.
+    "tanks"                            -- Ordinary tank.
   },
-  unit = {               -- Same cost as tanks.
+  unit = {                             -- Same cost as tanks.
     count = 75,
     ingredients = {
       {
@@ -65,6 +66,7 @@ local transmitter_item = {
   name = "robotank-transmitter-item",
   flags = {},
   icon = "__RoboTank__/graphics/icons/transmitter.png",
+  icon_size = 32,
   order = "x[transmitter]",
   stack_size = 5,
   subgroup = "defensive-structure",
@@ -94,6 +96,7 @@ robotank_item.order = "x[robotank]";
 robotank_item.icons = {
   {
     icon = "__base__/graphics/icons/tank.png",
+    icon_size = 32,
     tint = {r=0.7, g=0.7, b=1, a=1},
   },
 };
@@ -111,7 +114,11 @@ robotank_entity.minable = {
 -- normal tank.
 for _, layer in pairs(robotank_entity.animation.layers) do
   layer.tint = {r=0.7, g=0.7, b=1, a=1};
+  if (layer.hr_version) then
+    layer.hr_version.tint = {r=0.7, g=0.7, b=1, a=1};
+  end;
 end;
+
 
 -- World entity for the robotank turret.  Conceptually, I want the tank
 -- to attack with its own, normal machine gun.  But it is somewhat
@@ -161,6 +168,7 @@ robotank_turret_entity.resistances = table.deepcopy(robotank_entity.resistances)
 robotank_turret_entity.max_health = 1000;
 
 robotank_turret_entity.flags = {
+  "hide-alt-info",          -- Do not show the ammo type icon on the turret.
   "player-creation",        -- Supposedly this factors into enemy aggro.
   "placeable-off-grid",     -- Allow initial placement to be right where I put it.
   "not-on-map",             -- Do not draw the turret on the minimap.
@@ -170,6 +178,14 @@ robotank_turret_entity.flags = {
 -- This affects what is shown when you hover the mouse over
 -- the alert for something taking damage.
 robotank_turret_entity.icons = robotank_item.icons;
+
+-- Place the no-ammo alert icon for the turret at the same place as the
+-- no-fuel icon for the tank.
+robotank_turret_entity.alert_icon_shift = robotank_entity.alert_icon_shift;
+
+-- Typically the robotanks are fighting right next to the player, so the
+-- alert related to attacking is just useless noise.
+robotank_turret_entity.alert_when_attacking = false;
 
 
 -- Remove all of the graphics associated with the turret since they

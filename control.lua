@@ -524,7 +524,7 @@ local function collision_avoidance(tick, controllers, controller)
     end;
 
     --[[
-    if ((tick % 10 == 0) and (other.entity.type ~= "car" or other.entity.passenger == nil)) then
+    if ((tick % 10 == 0) and (other.entity.type ~= "car" or other.entity.get_driver() == nil)) then
       log("" .. controller.entity.unit_number ..
           " approaching " .. other.entity.unit_number ..
           ": dist=" .. math.sqrt(dist_sq) ..
@@ -642,11 +642,11 @@ local function drive_vehicle(tick, controllers, commander_vehicle,
       world_position_to_formation_position(commander_vehicle, v);
   end;
 
-  -- Skip driving any tank that has a passenger so it is possible for
+  -- Skip driving any tank that has a driver so it is possible for
   -- a player to jump in a robotank and help it get unstuck.  (The
   -- automatic turret will be disabled temporarily; see
   -- on_player_driving_changed_state.)
-  if (v.passenger ~= nil) then
+  if (v.get_driver() ~= nil) then
     return;
   end;
 
@@ -1218,7 +1218,7 @@ local function on_player_driving_changed_state(event)
       for unit_number, controller in pairs(controllers) do
         if (controller.turret ~= nil and
             controller.turret.active == false and
-            controller.entity.passenger == nil) then
+            controller.entity.get_driver() == nil) then
           log("Re-enabling turret of vehicle " .. controller.entity.unit_number .. ".");
           controller.turret.active = true;
         end;

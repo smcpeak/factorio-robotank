@@ -1,5 +1,7 @@
 TODO list for RoboTank mod
 
+- Optimization: Move hidden turret less often now that I can hide its ammo icon.
+- Investigate alert_when_attacking and alert_when_damaged for the hidden turret.
 - Questionable behavior when multiple transmitters present
 - RoboTank research should also require advanced-electronics-2 since that is needed for blue circuit.
 - Organize robotanks into squads
