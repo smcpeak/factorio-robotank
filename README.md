@@ -16,8 +16,8 @@ list available from the Factorio main menu, initially enabled.
 
 Usage
 =====
-First unlock the RoboTank technology.  It requires Robotics and Tanks
-to be researched first.
+First unlock the RoboTank technology.  It requires Robotics, Tanks,
+and Advanced Circuits 2 ("Blue Circuits") to be researched first.
 
 Then create a RoboTank Transmitter and at least one RoboTank.  Both are
 found in the Combat tab of the crafting menu (even though the normal
@@ -77,6 +77,6 @@ Links
 =====
 Factorio mod portal page: https://mods.factorio.com/mods/smcpeak/RoboTank
 
-Forum discussion page: https://forums.factorio.com/viewtopic.php?f=93&t=54395
+Forum discussion page: https://forums.factorio.com/viewtopic.php?f=93&t=55411
 
 Demo video on YouTube: https://www.youtube.com/watch?v=M64LyVkl6Ac
