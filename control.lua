@@ -295,13 +295,23 @@ local function find_unassociated_entities()
 end;
 
 
+-- Forward declaration of function defined later.
+local remove_entity_controller;
+
 -- Find the vehicle controller among 'controllers' that is commanding
 -- them, if any.
-local function find_commander_controller(controllers)
+local function find_commander_controller(force, controllers)
   for unit_number, controller in pairs(controllers) do
     local v = controller.entity;
+
+    -- It is possible for another mod to delete a vehicle without
+    -- triggering one of the events I am monitoring.
+    if (not v.valid) then
+      log("find_commander_controller: Removing invalid entity " .. unit_number .. ".");
+      remove_entity_controller(force, controller);
+
     -- A robotank cannot be a commander.
-    if (v.name ~= "robotank") then
+    elseif (v.name ~= "robotank") then
       -- It must have the transmitter item in its trunk.  (This
       -- implicitly excludes player characters from being commanders.
       -- I might change that at some point.)
@@ -884,7 +894,7 @@ local function refresh_commander(force, controllers)
   local old_cc = global.force_to_commander_controller[force];
 
   -- Find the new commander.
-  local new_cc = find_commander_controller(controllers);
+  local new_cc = find_commander_controller(force, controllers);
 
   if (new_cc ~= old_cc) then
     global.force_to_commander_controller[force] = new_cc;
@@ -915,8 +925,8 @@ end;
 -- already done so.  Remove the turret if it is still valid, then
 -- remove the controller from all data structures.  Beware that the
 -- entity may be invalid here.
-local function remove_entity_controller(force, controller)
-  -- Make sure 'force' is a string since that is what my table use.
+remove_entity_controller = function(force, controller)
+  -- Make sure 'force' is a string since that is what my table uses.
   local force = string_or_name_of(force);
 
   -- Destroy turret.
@@ -978,6 +988,11 @@ end;
 -- This function does a lot of different things because the cost of
 -- simply iterating through the tables is fairly high, so for speed
 -- I combine everything I can into one iteration.
+--
+-- NOTE: On entry to this function, it may be that 'controllers' has
+-- references to invalid vehicles due to the actions of other mods,
+-- so we have to be careful.  I choose not to fully scan the tables
+-- on every tick due to the performance impact of that.
 local function update_robotank_force_on_tick(tick, force, controllers)
   --- Some useful tick frequencies.
   local tick_1 = true;
@@ -1009,16 +1024,34 @@ local function update_robotank_force_on_tick(tick, force, controllers)
   local commander_velocity = nil;
   if (check_driving) then
     driving_commander_vehicle = commander_controller.entity;
-    driving_commander_velocity = vehicle_velocity(driving_commander_vehicle);
+
+    -- Double-check that the commander vehicle is valid.
+    if (driving_commander_vehicle ~= nil and
+        not driving_commander_vehicle.valid) then
+      log("on_tick: Commander vehicle is invalid!");
+      remove_entity_controller(force, commander_controller);
+      commander_controller = nil;
+      has_commander = false;
+      driving_commander_vehicle = nil;
+    else
+      driving_commander_velocity = vehicle_velocity(driving_commander_vehicle);
+    end;
   end;
 
   -- Iterate over robotanks to perform maintenance on them.
-  local removed_vehicle = false;
   for unit_number, controller in pairs(controllers) do
     if (controller.turret ~= nil) then
+      local removed_vehicle = false;
+
+      -- Double-check vehicle validity.
+      if (not controller.entity.valid) then
+        log("on_tick: Vehicle " .. unit_number .. " is invalid!");
+        remove_entity_controller(force, controller);
+        removed_vehicle = true;
+
       -- Transfer non-fatal damage sustained by the turret to the tank.
       -- The max health must match what is in data.lua.
-      if (check_turret_damage) then
+      elseif (check_turret_damage) then
         local damage = 1000 - controller.turret.health;
         if (damage > 0) then
           local entity_health = controller.entity.health;
@@ -1140,8 +1173,11 @@ script.on_event({defines.events.on_player_mined_entity, defines.events.on_robot_
 
         remove_entity_controller(e.entity.force, controller);
       else
-        -- I am supposed to be keeping track of all vehicles.
-        log("But the vehicle was not in my tables?");
+        -- I am supposed to be keeping track of all vehicles by keeping
+        -- track of the on_built event (which happens normally when the
+        -- player puts the vehicle down into the world).  But mods can
+        -- create vehicles without placing them, leading to this code.
+        log("But the vehicle was not in my tables.");
       end;
     end;
   end
@@ -1158,8 +1194,9 @@ script.on_event({defines.events.on_entity_died},
       if (controller) then
         remove_entity_controller(e.entity.force, controller);
       else
-        -- I am supposed to be keeping track of all vehicles and players.
-        log("But the vehicle or player was not in my tables?");
+        -- I am supposed to be keeping track of all vehicles and
+        -- players, but might miss some due to mods.
+        log("But the vehicle or player was not in my tables.");
       end;
 
     elseif (e.entity.name == "robotank-turret-entity") then
