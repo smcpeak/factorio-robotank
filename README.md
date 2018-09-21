@@ -73,6 +73,10 @@ make a RoboTank and forget about it, then later make a commander on the
 other side of your base, the forgotten RoboTank might go on an inadvertent
 rampage inside your base before you notice.
 
+A portion of the ammo placed in a RoboTank seems to disappear.  This
+happens because, internally, it has been moved to a hidden turret entity
+that does the firing.  You get the ammo back when you pick up the tank.
+
 Links
 =====
 Factorio mod portal page: https://mods.factorio.com/mods/smcpeak/RoboTank
