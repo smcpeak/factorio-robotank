@@ -173,6 +173,8 @@ robotank_turret_entity.flags = {
   "placeable-off-grid",     -- Allow initial placement to be right where I put it.
   "not-on-map",             -- Do not draw the turret on the minimap.
   "not-repairable",         -- Bots cannot repair the turret (any damage is moved to the tank).
+  "not-deconstructable",    -- Cannot flag it for deconstruction by bots.
+  "not-blueprintable",      -- Cannot put this turret into a blueprint.
 };
 
 -- This affects what is shown when you hover the mouse over
