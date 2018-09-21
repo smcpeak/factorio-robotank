@@ -78,9 +78,10 @@ local robotank_recipe = {
   type = "recipe",
   name = "robotank-recipe",
   enabled = false,
+  energy_required = 2,            -- 2 seconds to build.
   ingredients = {
     {"tank", 1},                  -- Base vehicle.
-    {"processing-unit", 1},       -- Computer for driving and shooting algorithms.
+    {"processing-unit", 20},      -- Computer for driving and shooting algorithms.
     {"flying-robot-frame", 1},    -- The robot "driver", with its implicit radio receiver.
   },
   result = "robotank-item",
