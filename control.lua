@@ -22,6 +22,11 @@ local must_initialize_loaded_global_data = true;
 -- for consistency with our data structures.
 local must_rescan_world = true;
 
+-- Maximum health of a robotank turret, needed to allow damage to be
+-- transferred to the tank properly.  This will be set to its proper
+-- value during initialization.
+local robotank_turret_max_health = 0;
+
 -- Structure of 'global' is {
 --   -- Data version number, bumped when I make a change that requires
 --   -- special handling.
@@ -230,6 +235,12 @@ local function initialize_loaded_global_data()
           table_size(controllers) .. " controllers.");
     end;
   end;
+
+  -- Read the max health from the prototypes table.  This resolves a
+  -- conflict with the walls-block-spitters mod, which adjusts the
+  -- max health of all turrets.
+  robotank_turret_max_health = game.entity_prototypes["robotank-turret-entity"].max_health;
+  log("robotank turret max health: " .. robotank_turret_max_health);
 end;
 
 
@@ -1050,9 +1061,8 @@ local function update_robotank_force_on_tick(tick, force, controllers)
         removed_vehicle = true;
 
       -- Transfer non-fatal damage sustained by the turret to the tank.
-      -- The max health must match what is in data.lua.
       elseif (check_turret_damage) then
-        local damage = 1000 - controller.turret.health;
+        local damage = robotank_turret_max_health - controller.turret.health;
         if (damage > 0) then
           local entity_health = controller.entity.health;
           if (entity_health <= damage) then
@@ -1069,7 +1079,7 @@ local function update_robotank_force_on_tick(tick, force, controllers)
             end;
           else
             controller.entity.health = entity_health - damage;
-            controller.turret.health = 1000;
+            controller.turret.health = robotank_turret_max_health;
           end;
         end;
       end;

@@ -162,10 +162,7 @@ robotank_turret_entity.attack_parameters.damage_modifier = tank_machine_gun.atta
 -- cases it is the turret that will be taking damage from enemies.
 robotank_turret_entity.resistances = table.deepcopy(robotank_entity.resistances);
 
--- Raise the turret's max health to ensure it won't be one-shot by
--- anything, and also ensure its max health is what my script
--- expects in order to properly calculate damage taken to transfer
--- it to the tank.
+-- Raise the turret's max health to ensure it won't be one-shot by anything.
 robotank_turret_entity.max_health = 1000;
 
 robotank_turret_entity.flags = {
