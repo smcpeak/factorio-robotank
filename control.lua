@@ -27,6 +27,14 @@ local must_rescan_world = true;
 -- value during initialization.
 local robotank_turret_max_health = 0;
 
+-- Ticks between ammo checks.  Set during initialization.
+local ammo_check_period_ticks = 0;
+
+-- Number of ammo magazines to load into a turret when it is out.
+-- Set during initialization.
+local ammo_move_magazine_count = 0;
+
+
 -- Structure of 'global' is {
 --   -- Data version number, bumped when I make a change that requires
 --   -- special handling.
@@ -105,6 +113,20 @@ end;
 --
 -- Fortunately, it is easy to recompute after a load.
 local unit_number_to_nearby_controllers = {};
+
+
+-- Re-read the configuration settings.
+local function read_configuration_settings()
+  log("read_configuration_settings started");
+  ammo_check_period_ticks = settings.global["robotank-ammo-check-period-ticks"].value;
+  ammo_move_magazine_count = settings.global["robotank-ammo-move-magazine-count"].value;
+  log("read_configuration_settings finished");
+end;
+
+-- Do it once on startup, then afterward in response to the
+-- on_runtime_mod_setting_changed event.
+read_configuration_settings();
+script.on_event(defines.events.on_runtime_mod_setting_changed, read_configuration_settings);
 
 
 -- Add an entity to our table and return its controller.
@@ -382,12 +404,8 @@ local function maybe_load_robotank_turret_ammo(controller)
     end;
 
     if (ammo_type) then
-      -- Move up to 50 ammo magazines into the turret.  I originally
-      -- had this as 10 to match the usual way that inserters load
-      -- turrets, but then I reduced the frequency of the reload check
-      -- to once per 5 ticks, so I want a correspondingly bigger buffer
-      -- here.
-      local got = car_inv.remove{name=ammo_type, count=50};
+      -- Move up to 'ammo_move_magazine_count' ammo magazines into the turret.
+      local got = car_inv.remove{name=ammo_type, count=ammo_move_magazine_count};
       if (got < 1) then
         log("Failed to remove ammo from trunk!");
       else
@@ -1008,6 +1026,7 @@ local function update_robotank_force_on_tick(tick, force, controllers)
   --- Some useful tick frequencies.
   local tick_1 = true;
   local tick_5 = ((tick % 5) == 0);
+  local tick_ammo_check = ((tick % ammo_check_period_ticks) == 0);
   local tick_10 = ((tick % 10) == 0);
   local tick_60 = ((tick % 60) == 0);
 
@@ -1024,7 +1043,7 @@ local function update_robotank_force_on_tick(tick, force, controllers)
   -- is no commander.
   local check_turret_damage = (has_commander and tick_5 or tick_60);
   local check_speed =         (has_commander and tick_1 or tick_10);
-  local check_ammo =          (has_commander and tick_5 or tick_60);
+  local check_ammo =          (has_commander and tick_ammo_check or tick_60);
   local check_driving =       (has_commander and tick_1 or false);
   if (not (check_turret_damage or check_speed or check_ammo or check_driving)) then
     return;
