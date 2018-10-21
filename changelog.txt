@@ -1,0 +1,32 @@
+---------------------------------------------------------------------------------------------------
+Version: 0.3.3
+Date: 21.10.2018
+  Bugfixes:
+    - Putting the transmitter into player quickbar would crash.
+  Features:
+    - Add configurable ammo check period and number of moved magazines.
+---------------------------------------------------------------------------------------------------
+Version: 0.3.2
+Date: 23.09.2018
+  Bugfixes:
+    - Resolve conflict with walls-block-spitters mod that caused RoboTanks to self-destruct on placement.
+    - Crash if robotank hidden turret deconstructed by a robot.
+  Balance:
+    - RoboTank recipe now takes 20 blue circuit, 2 seconds.
+---------------------------------------------------------------------------------------------------
+Version: 0.3.1
+Date: 03.03.2018
+  Bugfixes:
+    - Crash due to vehicle removed by another mod without firing event.
+---------------------------------------------------------------------------------------------------
+Version: 0.3.0
+Date: 19.12.2017
+  Compatibility:
+    - Update to be compatible with Factorio 0.16.
+  Bugfixes:
+    - Mod data in save file was huge due to nearby_controllers.
+---------------------------------------------------------------------------------------------------
+Version: 0.1.0 - First public release
+Date: 04.12.2017
+  Major Features:
+    - RoboTank and RoboTank transmitter
