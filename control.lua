@@ -343,14 +343,22 @@ local function find_commander_controller(force, controllers)
       log("find_commander_controller: Removing invalid entity " .. unit_number .. ".");
       remove_entity_controller(force, controller);
 
-    -- A robotank cannot be a commander.
-    elseif (v.name ~= "robotank") then
-      -- It must have the transmitter item in its trunk.  (This
-      -- implicitly excludes player characters from being commanders.
-      -- I might change that at some point.)
+    elseif (v.speed == nil) then
+      -- The commander must be a vehicle, and hence will have a speed.
+      -- This entity does not, so skip it.
+      --
+      -- This check prevents player characters from being commanders.
+      -- I would have thought that checking the "car_trunk" inventory
+      -- would suffice, but in fact the quick bar counts as the "trunk"
+      -- for a player!
+
+    elseif (v.name == "robotank") then
+      -- A robotank cannot be a commander.
+
+    else
+      -- It must have the transmitter item in its trunk.
       local inv = v.get_inventory(defines.inventory.car_trunk);
       if (inv and inv.get_item_count("robotank-transmitter-item") > 0) then
-        --log("Commander vehicle is unit " .. v.unit_number);
         return controller;
       end;
     end;
@@ -942,6 +950,7 @@ local function refresh_commander(force, controllers)
       end;
     elseif (old_cc == nil) then
       log("Force " .. force .. " gained a commander: unit " .. new_cc.entity.unit_number);
+      --log("Commander vehicle: " .. serpent.block(entity_info(new_cc.entity)));
     else
       -- TODO: This is not handled very well.  For example,
       -- we do not update formation positions.  (Should we?)
