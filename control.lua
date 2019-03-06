@@ -754,8 +754,12 @@ local function drive_vehicle(tick, controllers, commander_vehicle,
   -- Copy vehicle speed into a local for better performance.
   local v_speed = v.speed;
 
-  if (desired_speed < 0.001) then
+  if (desired_speed < 0.0013) then
     -- Regard this as a desire to stop.
+    --
+    -- The original threshold was 0.001.  I raised it to 0.0013 to
+    -- reduce the likelihood a tank would circle in place after the
+    -- commander stops.
     if (v_speed > 0) then
       pedal = defines.riding.acceleration.braking;
     else
