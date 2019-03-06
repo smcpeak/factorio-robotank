@@ -1,4 +1,11 @@
 ---------------------------------------------------------------------------------------------------
+Version: 0.4.0
+Date: 05.03.2019
+  Compatibility:
+    - Update to be compatible with Factorio 0.17.
+  Bugfixes:
+    - Reduce tendency of RoboTanks to endlessly circle after commander stops.
+---------------------------------------------------------------------------------------------------
 Version: 0.3.3
 Date: 21.10.2018
   Bugfixes:
