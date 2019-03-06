@@ -24,18 +24,18 @@ local robotank_technology = {
     "tanks"                            -- Ordinary tank.
   },
   unit = {                             -- Same cost as tanks.
-    count = 75,
+    count = 250,
     ingredients = {
       {
-        "science-pack-1",
+        "automation-science-pack",
         1
       },
       {
-        "science-pack-2",
+        "logistic-science-pack",
         1
       },
       {
-        "science-pack-3",
+        "chemical-science-pack",
         1
       },
       {
