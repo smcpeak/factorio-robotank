@@ -1,6 +1,18 @@
 -- RoboTank data.lua
 -- Extend the global data table to describe the mod elements.
 
+-- Tint to apply to robotanks to distinguish them visually from
+-- other vehicles.
+local robotank_tint = {
+  r = settings.startup["robotank-color-red"].value;
+  g = settings.startup["robotank-color-green"].value;
+  b = settings.startup["robotank-color-blue"].value;
+  
+  -- The alpha value is not configurable.  If this is less than
+  -- one, the tank is partially transparent, which looks wrong.
+  a = 1.0,
+};
+
 -- Technology to make robotanks and transmitters.
 local robotank_technology = {
   type = "technology",
@@ -98,7 +110,7 @@ robotank_item.icons = {
   {
     icon = "__base__/graphics/icons/tank.png",
     icon_size = 32,
-    tint = {r=0.7, g=0.7, b=1, a=1},
+    tint = robotank_tint,
   },
 };
 
@@ -107,16 +119,15 @@ local robotank_entity = table.deepcopy(data.raw.car.tank);
 robotank_entity.name = "robotank-entity";
 robotank_entity.icons = robotank_item.icons;
 robotank_entity.minable = {
-  mining_time = 0.25,          -- Less annoying to pick up a squad.
+  mining_time = 0.25,          -- Short time to easily pick up a squad.
   result = "robotank-item",
 };
 
--- Make it a little blue so it is visually distinct from the
--- normal tank.
+-- Make it visually distinct from the normal tank.
 for _, layer in pairs(robotank_entity.animation.layers) do
-  layer.tint = {r=0.7, g=0.7, b=1, a=1};
+  layer.tint = robotank_tint;
   if (layer.hr_version) then
-    layer.hr_version.tint = {r=0.7, g=0.7, b=1, a=1};
+    layer.hr_version.tint = robotank_tint;
   end;
 end;
 
