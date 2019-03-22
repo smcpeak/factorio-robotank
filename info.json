@@ -1,9 +1,8 @@
 {
     "name": "RoboTank",
-    "version": "0.4.0",
+    "version": "0.4.1",
     "title": "RoboTank",
     "author": "Scott McPeak",
-    "contact": "scott.g.mcpeak@gmail.com",
     "homepage": "https://github.com/smcpeak/factorio-robotank",
     "factorio_version": "0.17",
     "dependencies": ["base >= 0.17"],
