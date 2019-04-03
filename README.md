@@ -59,8 +59,9 @@ RoboTank collision avoidance is far from perfect.  They will run into
 each other and/or become stuck if you maneuver the commander too
 aggressively.
 
-This mod hasn't been tested with multiplayer.  Moreover, there can only
-be one commander (per force) right now.
+This mod has only been lightly tested with multiplayer.  There can only
+be one commander (per force) right now, so only one of the players will be
+able to command the squad.
 
 You should only have one transmitter.  Putting transmitters in multiple
 vehicles will probably confuse the RoboTanks.
