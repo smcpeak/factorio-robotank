@@ -1,4 +1,14 @@
 ---------------------------------------------------------------------------------------------------
+Version: 0.4.2
+Date: 02.04.2019
+  Bugfixes:
+    - Fix crash when loading RoboTank into a map where another player was in a vehicle.
+---------------------------------------------------------------------------------------------------
+Version: 0.4.1
+Date: 22.03.2019
+  Features:
+    - Make the color of RoboTanks configurable.
+---------------------------------------------------------------------------------------------------
 Version: 0.4.0
 Date: 05.03.2019
   Compatibility:
