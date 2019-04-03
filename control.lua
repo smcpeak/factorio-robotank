@@ -6,14 +6,6 @@ require "lua_util"         -- add_vec, etc.
 require "factorio_util"    -- vehicle_velocity, etc.
 
 
-script.on_init(function()
-  log("RoboTank on_init called.");
-end);
-
-script.on_load(function()
-  log("RoboTank on_load called.");
-end);
-
 -- True when we need to examine the global data just loaded to
 -- upgrade or validate it.
 local must_initialize_loaded_global_data = true;
@@ -1160,6 +1152,32 @@ local function update_robotank_force_on_tick(tick, force, controllers)
   end;
 end;
 
+-- This is called either when we start a brand new game, or when we
+-- load a map that previously did not have RoboTank enabled.  In
+-- either case, we are transitioning from a global state in which
+-- RoboTank was absent to one where it is present.
+script.on_init(function()
+  log("RoboTank on_init called.");
+
+  -- When I originally wrote
+  -- the mod, I was confused about initialization events, so ended up
+  -- putting it all into on_tick.  But that fails for the case of
+  -- loading a game that had been used for multiplayer, and in which
+  -- one of the other players was inside a vehicle when the game was
+  -- saved.  (In that case, when the map is loaded, we get events
+  -- saying the player has left the vehicle before any on_tick.)
+  must_initialize_loaded_global_data = false;
+  initialize_loaded_global_data();
+end);
+
+-- This is called when we load a map that previously had RoboTank.
+-- According to the docs, there is a very limited set of actions that
+-- can be performed here, none of which seem to apply to this mod:
+-- https://lua-api.factorio.com/latest/LuaBootstrap.html
+script.on_load(function()
+  log("RoboTank on_load called.");
+end);
+
 script.on_event(defines.events.on_tick, function(e)
   if (must_rescan_world) then
     if (must_initialize_loaded_global_data) then
@@ -1294,6 +1312,8 @@ script.on_event(
 
 
 local function on_player_driving_changed_state(event)
+  log("RoboTank: on_player_driving_changed_state: index=" .. event.player_index);
+
   local character = game.players[event.player_index].character;
   if (character ~= nil) then
     if (character.vehicle ~= nil) then
