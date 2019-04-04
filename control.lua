@@ -879,7 +879,7 @@ local function can_reverse(tick, unit_number, controller)
       -- Contact would occur in back; is it soon?
       if (approach_ticks < 100) then
         if (tick % 60 == 0) then
-          diag(2, "Vehicle " .. v.unit_number ..
+          diag(4, "Vehicle " .. v.unit_number ..
                   " cannot reverse because it would hit entity " ..
                   other.entity.unit_number ..
                   " at abs_orient_diff " .. abs_orient_diff ..
@@ -1119,11 +1119,17 @@ local function drive_vehicle(tick, force_controllers, commander_vehicle,
           controller.reversing_until = tick + 60;
           reversing = true;
         else
-          -- This message sometimes gets spammed to the log when a tank
-          -- is close to its desired position, but not quite there, and
-          -- is in the middle of a stopped pack of tanks.  It might be
-          -- nice to throttle the message at some point.
-          diag(2, "Vehicle " .. unit_number .. " is stuck and cannot reverse.");
+          -- Log something periodically, but avoid spamming.
+          local s = math.floor((tick - controller.stuck_since) / 60);
+          if (s == 5 or
+              s == 30 or
+              s == 60 or
+              s == 300 or
+              (s >= 600 and (s % 600) == 0)) then   -- every 10 minutes
+            diag(2, "For " .. s ..
+                    " seconds, vehicle " .. unit_number ..
+                    " has been stuck and cannot reverse.");
+          end;
         end;
       end;
     end;
