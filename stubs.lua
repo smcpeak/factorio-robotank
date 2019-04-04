@@ -18,6 +18,9 @@ end;
 function script.on_load()
 end;
 
+function script.on_configuration_changed()
+end;
+
 defines = {};
 
 defines.events = {};

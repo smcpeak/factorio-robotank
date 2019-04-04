@@ -14,6 +14,17 @@ local must_initialize_loaded_global_data = true;
 -- for consistency with our data structures.
 local must_rescan_world = true;
 
+-- How much to log, from among:
+--   0: Nothing.
+--   1: Only things that indicate a serious problem.  These suggest a
+--      bug in the RoboTank mod, but are recoverable.
+--   2: Relatively infrequent things possibly of interest to the user,
+--      such as changes to the formation of tanks, tanks complaining
+--      about being stuck, etc.
+--   3: Changes to internal data structures.
+--   4: Details of algorithms.
+local diagnostic_verbosity = 2;
+
 -- Maximum health of a robotank turret, needed to allow damage to be
 -- transferred to the tank properly.  This will be set to its proper
 -- value during initialization.
@@ -30,15 +41,28 @@ local ammo_move_magazine_count = 0;
 -- Structure of 'global' is {
 --   -- Data version number, bumped when I make a change that requires
 --   -- special handling.
---   data_version = 4;
+--   data_version = 5;
 --
 --   -- Map from force to its controllers.  Each force's controllers
 --   -- are a map from unit_number to its entity_controller object.
+--   --
+--   -- When a value of this map is stored in a local variable, we use
+--   -- the name 'force_controllers'.
 --   force_to_controllers = {};
 --
---   -- Map from force to its commander vehicle controller, if there is
---   -- such a commander.
---   force_to_commander_controller = {};
+--   -- Map from player_index to controllers associated with that
+--   -- player.  player_index is LuaPlayer.index.  For a given player,
+--   -- its controllers are a subset of those associated with that
+--   -- player's force.
+--   --
+--   -- When a value of this map is stored in a local variable, we use
+--   -- the name 'pi_controllers' to distinguish it from
+--   -- 'force_controllers'.
+--   player_index_to_controllers = {};
+--
+--   -- Map from player_index to its commander vehicle controller, if
+--   -- there is such a commander.
+--   player_index_to_commander_controller = {};
 -- };
 
 -- Control state for an entity that is relevant to this mod.  All
@@ -47,8 +71,8 @@ local ammo_move_magazine_count = 0;
 local function new_entity_controller(e)
   return {
     -- Reference to the Factorio entity we are controlling.  This is
-    -- either a vehicle (type=="car") or player character
-    -- (name=="player").
+    -- either a vehicle (type=="car"), which itself might be a robotank
+    -- (name=="robotank-entity"), or a player character (name=="player").
     entity = e,
 
     -- Associated turret entity that does the shooting.  It is always
@@ -107,12 +131,26 @@ end;
 local unit_number_to_nearby_controllers = {};
 
 
+-- Forward declarations of functions.
+local remove_invalid_entities;
+local remove_entity_controller;
+local find_unassociated_entities;
+
+
+-- Log 'str' if we are at verbosity 'v' or higher.
+local function diag(v, str)
+  if (v <= diagnostic_verbosity) then
+    log(str);
+  end;
+end;
+
+
 -- Re-read the configuration settings.
 local function read_configuration_settings()
-  log("read_configuration_settings started");
+  diag(3, "read_configuration_settings started");
   ammo_check_period_ticks = settings.global["robotank-ammo-check-period-ticks"].value;
   ammo_move_magazine_count = settings.global["robotank-ammo-move-magazine-count"].value;
-  log("read_configuration_settings finished");
+  diag(3, "read_configuration_settings finished");
 end;
 
 -- Do it once on startup, then afterward in response to the
@@ -121,12 +159,140 @@ read_configuration_settings();
 script.on_event(defines.events.on_runtime_mod_setting_changed, read_configuration_settings);
 
 
--- Add an entity to our table and return its controller.
+-- Return the (string) name of the force associated with 'e'.
+local function force_of_entity(e)
+  return string_or_name_of(e.force);
+end;
+
+
+-- Get the player index associated with entity 'e', or -1 if this
+-- entity is not associated with a player.
+local function player_index_of_entity(e)
+  if (e.type == 'car') then
+    -- Vehicle.
+    return e.last_user.index;
+  elseif (e.type == 'player') then
+    -- Character.
+    if (e.player ~= nil) then
+      return e.player.index;
+    else
+      return -1;
+    end;
+  else
+    return -1;
+  end;
+end;
+
+
+-- Check that our data invariants hold.  If not, log a message at
+-- level 1 and return false.
+local function check_invariants()
+  -- Check that everything in 'player_index_to_controllers' is also
+  -- in 'force_to_controllers'.
+  for player_index, pi_controllers in pairs(global.player_index_to_controllers) do
+    for unit_number, controller in pairs(pi_controllers) do
+      local entity = controller.entity;
+      local entity_pi = player_index_of_entity(entity);
+      if (player_index ~= entity_pi) then
+        diag(1, "WARNING: Entity " .. entity.unit_number ..
+                " has player index " .. entity_pi ..
+                " but was found in the table for PI " .. player_index ..
+                ".");
+        return false;
+      end;
+
+      local force = force_of_entity(entity);
+      if (global.force_to_controllers[force][unit_number] ~= controller) then
+        diag(1, "WARNING: Controller for entity " .. entity.unit_number ..
+                ", with force " .. force ..
+                ", was not found in its force table.");
+        return false;
+      end;
+    end;
+  end;
+
+  -- Check the maps in the opposite direction.
+  for force, force_controllers in pairs(global.force_to_controllers) do
+    for unit_number, controller in pairs(force_controllers) do
+      local entity = controller.entity;
+      local entity_force = force_of_entity(entity);
+      if (force ~= entity_force) then
+        diag(1, "WARNING: Entity " .. entity.unit_number ..
+                " has force \"" .. entity_force ..
+                "\" but was found in the table for \"" .. force .. "\".");
+        return false;
+      end;
+
+      -- One concern I have here is the association between vehicles
+      -- and players.  The GUI information panel for a vehicle labels
+      -- the "Last user", but (at least in Factorio 0.17.14)
+      -- it does not change when another player uses it.  Instead, the
+      -- association seems to never change after placement.  If Factorio
+      -- changes that behavior, then my invariants will break, and this
+      -- code will have to repair them.
+      local player_index = player_index_of_entity(entity);
+      if (global.player_index_to_controllers[player_index][unit_number] ~= controller) then
+        diag(1, "WARNING: Controller for entity " .. entity.unit_number ..
+                ", with player index " .. player_index ..
+                ", was not found in its PI table.");
+        return false;
+      end;
+    end;
+  end;
+
+  return true;
+end;
+
+
+-- Clear the global data structures and rebuild them from the world.
+-- This is done in response to discovering a broken invariant as a
+-- method of fault tolerance.
+local function reset_global_data()
+  diag(1, "RoboTank: resetting global data");
+  must_rescan_world = false;
+
+  -- Clear the data structures so we can rebuild them.
+  global.force_to_controllers = {};
+  global.player_index_to_controllers = {};
+  global.player_index_to_commander_controller = {};
+
+  -- This will re-add all the entities we keep track of.
+  find_unassociated_entities();
+end;
+
+
+local function check_or_fix_invariants()
+  if (not check_invariants()) then
+    reset_global_data();
+
+    if (not check_invariants()) then
+      error("Invariants are still broken even after attempting repair.");
+    end;
+  end;
+end;
+
+
+-- Add an entity to our tables and return its controller.
 local function add_entity(e)
-  local force_name = string_or_name_of(e.force);
-  global.force_to_controllers[force_name] = global.force_to_controllers[force_name] or {}
+  local force_name = force_of_entity(e);
+  global.force_to_controllers[force_name] =
+    global.force_to_controllers[force_name] or {};
+
+  local player_index = player_index_of_entity(e);
+  if (player_index < 0) then
+    error("Cannot add entity due to lack of player index:" ..
+          " unit=" .. e.unit_number ..
+          " type=" .. e.type ..
+          " name=" .. e.name ..
+          " pos=(" .. e.position.x .. "," .. e.position.y .. ")" ..
+          " force=" .. force_name);
+  end;
+  global.player_index_to_controllers[player_index] =
+    global.player_index_to_controllers[player_index] or {};
+
   local controller = new_entity_controller(e);
   global.force_to_controllers[force_name][e.unit_number] = controller;
+  global.player_index_to_controllers[player_index][e.unit_number] = controller;
 
   if (e.name == "robotank-entity") then
     -- Is there already an associated turret here?
@@ -137,14 +303,14 @@ local function add_entity(e)
     };
     if (#candidates > 0) then
       controller.turret = candidates[1];
-      log("Found existing turret with unit number " .. controller.turret.unit_number .. ".");
+      diag(3, "Found existing turret with unit number " .. controller.turret.unit_number .. ".");
     else
       controller.turret = e.surface.create_entity{
         name = "robotank-turret-entity",
         position = controller.entity.position,
         force = e.force};
       if (controller.turret) then
-        log("Made new turret.");
+        diag(3, "Made new turret.");
       else
         -- This unfortunately is not recoverable because I do not check
         -- for a nil turret elsewhere, both for simplicity of logic and
@@ -154,19 +320,21 @@ local function add_entity(e)
     end;
   end;
 
-  log("Entity " .. e.unit_number ..
-      " with name " .. e.name ..
-      " at (" .. e.position.x .. "," .. e.position.y .. ")" ..
-      " added to force " .. force_name);
+  diag(3, "Added entity: unit=" .. e.unit_number ..
+          " type=" .. e.type ..
+          " name=" .. e.name ..
+          " player_index=" .. player_index_of_entity(e) ..
+          " pos=(" .. e.position.x .. "," .. e.position.y .. ")" ..
+          " force=" .. force_name);
 
   return controller;
 end;
 
 -- Find the controller object associated with the given entity, if any.
 local function find_entity_controller(entity)
-  local controllers = global.force_to_controllers[string_or_name_of(entity.force)];
-  if (controllers) then
-    return controllers[entity.unit_number];
+  local pi_controllers = global.player_index_to_controllers[player_index_of_entity(entity)];
+  if (pi_controllers) then
+    return pi_controllers[entity.unit_number];
   else
     return nil;
   end;
@@ -178,10 +346,10 @@ end;
 -- part of the game, and what version it was if so).  Make sure it is
 -- properly initialized.
 local function initialize_loaded_global_data()
-  log("Loaded data_version: " .. serpent.line(global.data_version));
+  diag(3, "Loaded data_version: " .. serpent.line(global.data_version));
 
   if (global.data_version == 1) then
-    log("RoboTank: Upgrading data_version 1 to 2.");
+    diag(2, "RoboTank: Upgrading data_version 1 to 2.");
 
     -- I renamed "force_to_vehicles" to "force_to_controllers".
     global.force_to_controllers = global.force_to_vehicles;
@@ -189,8 +357,8 @@ local function initialize_loaded_global_data()
 
     -- I also renamed "nearby_vehicles" to "nearby_controllers".
     if (global.force_to_controllers ~= nil) then
-      for _, controllers in pairs(global.force_to_controllers) do
-        for _, controller in pairs(controllers) do
+      for _, force_controllers in pairs(global.force_to_controllers) do
+        for _, controller in pairs(force_controllers) do
           controller.nearby_controllers = controller.nearby_vehicles;
           controller.nearby_vehicles = nil;
         end;
@@ -200,12 +368,12 @@ local function initialize_loaded_global_data()
   end;
 
   if (global.data_version == 2) then
-    log("RoboTank: Upgrading data_version 2 to 3.");
+    diag(2, "RoboTank: Upgrading data_version 2 to 3.");
 
     -- I renamed "vehicle" to "entity".
     if (global.force_to_controllers ~= nil) then
-      for _, controllers in pairs(global.force_to_controllers) do
-        for _, controller in pairs(controllers) do
+      for _, force_controllers in pairs(global.force_to_controllers) do
+        for _, controller in pairs(force_controllers) do
           controller.entity = controller.vehicle;
           controller.vehicle = nil;
         end;
@@ -215,38 +383,85 @@ local function initialize_loaded_global_data()
   end;
 
   if (global.data_version == 3) then
-    log("RoboTank: Upgrading data_version 3 to 4.");
+    diag(2, "RoboTank: Upgrading data_version 3 to 4.");
 
     -- I removed "nearby_controllers", instead storing that outside
     -- of 'global'.
     if (global.force_to_controllers ~= nil) then
-      for _, controllers in pairs(global.force_to_controllers) do
-        for _, controller in pairs(controllers) do
+      for _, force_controllers in pairs(global.force_to_controllers) do
+        for _, controller in pairs(force_controllers) do
           controller.nearby_controllers = nil;
         end;
       end;
     end;
+    global.data_version = 4;
   end;
 
-  global.data_version = 4;
+  if (global.data_version == 4) then
+    diag(2, "RoboTank: Upgrading data_version 4 to 5.");
 
-  if (global.force_to_commander_controller == nil) then
-    log("force_to_commander_controller was nil, setting it to empty.");
-    global.force_to_commander_controller = {};
+    -- I added 'player_index_to_controllers'.
+    global.player_index_to_controllers = {};
+    for force, force_controllers in pairs(global.force_to_controllers) do
+      for unit_number, controller in pairs(force_controllers) do
+        local entity = controller.entity;
+        if (entity.valid) then
+          local player_index = player_index_of_entity(entity);
+          assert(player_index >= 0);
+          global.player_index_to_controllers[player_index] =
+            global.player_index_to_controllers[player_index] or {}
+          global.player_index_to_controllers[player_index][unit_number] = controller;
+          diag(3, "added unit " .. unit_number .. " to player_index " .. player_index);
+        else
+          -- One way this happens is if the loaded map was saved with
+          -- multiple players in it, but is then loaded with only one
+          -- player.
+          diag(3, "unit " .. unit_number .. " is invalid, removing it");
+          force_controllers[unit_number] = nil;
+        end;
+      end;
+    end;
+
+    -- I replaced 'force_to_commander_controller' with
+    -- 'player_index_to_commander_controller'.  I will simply remove
+    -- the old map and initialize the new one to empty, in anticipation
+    -- that commander refresh will populate it.
+    global.force_to_commander_controller = nil;
+    global.player_index_to_commander_controller = {};
+    global.data_version = 5;
+  end;
+
+  global.data_version = 5;
+
+  if (global.player_index_to_commander_controller == nil) then
+    diag(3, "player_index_to_commander_controller was nil, setting it to empty.");
+    global.player_index_to_commander_controller = {};
   else
-    log("force_to_commander_controller has " ..
-        table_size(global.force_to_commander_controller) .. " entries.");
+    diag(3, "player_index_to_commander_controller has " ..
+            table_size(global.player_index_to_commander_controller) .. " entries.");
   end;
 
   if (global.force_to_controllers == nil) then
-    log("force_to_controllers was nil, setting it to empty.");
+    diag(3, "force_to_controllers was nil, setting it to empty.");
     global.force_to_controllers = {};
   else
-    log("force_to_controllers has " ..
-        table_size(global.force_to_controllers) .. " entries.");
-    for force, controllers in pairs(global.force_to_controllers) do
-      log("  force \"" .. force .. "\" has " ..
-          table_size(controllers) .. " controllers.");
+    diag(3, "force_to_controllers has " ..
+            table_size(global.force_to_controllers) .. " entries.");
+    for force, force_controllers in pairs(global.force_to_controllers) do
+      diag(3, "  force \"" .. force .. "\" has " ..
+              table_size(force_controllers) .. " controllers.");
+    end;
+  end;
+
+  if (global.player_index_to_controllers == nil) then
+    diag(3, "player_index_to_controllers was nil, setting it to empty.");
+    global.player_index_to_controllers = {};
+  else
+    diag(3, "player_index_to_controllers has " ..
+            table_size(global.player_index_to_controllers) .. " entries.");
+    for player_index, pi_controllers in pairs(global.player_index_to_controllers) do
+      diag(3, "  player_index " .. player_index .. " has " ..
+              table_size(pi_controllers) .. " controllers.");
     end;
   end;
 
@@ -254,7 +469,13 @@ local function initialize_loaded_global_data()
   -- conflict with the walls-block-spitters mod, which adjusts the
   -- max health of all turrets.
   robotank_turret_max_health = game.entity_prototypes["robotank-turret-entity"].max_health;
-  log("robotank turret max health: " .. robotank_turret_max_health);
+  diag(3, "robotank turret max health: " .. robotank_turret_max_health);
+
+  -- Deal with loading a map that had players in it when saved
+  -- but the players are now gone.
+  remove_invalid_entities();
+
+  check_or_fix_invariants();
 end;
 
 
@@ -263,10 +484,10 @@ end;
 local function find_or_create_entity_controller(entity)
   local controller = find_entity_controller(entity);
   if (controller ~= nil) then
-    log("Found existing controller object for unit " .. entity.unit_number);
+    diag(3, "Found existing controller object for unit " .. entity.unit_number);
   else
-    log("Unit number " .. entity.unit_number ..
-        " has no controller, making a new one.");
+    diag(3, "Unit number " .. entity.unit_number ..
+            " has no controller, making a new one.");
     controller = add_entity(entity);
   end;
   return controller;
@@ -275,11 +496,10 @@ end;
 
 -- Called during 'find_unassociated_entities' when one is found.
 local function found_an_entity(e, turrets)
-  --log("found entity: " .. serpent.block(entity_info(e)));
+  --diag(4, "found entity: " .. serpent.block(entity_info(e)));
 
   -- See if we already know about this entity.
   local controller = find_or_create_entity_controller(e);
-
   if (controller.turret ~= nil) then
     -- This turret is now accounted for (it might have existed before,
     -- or it might have just been created by 'add_entity').
@@ -291,7 +511,7 @@ end;
 -- Scan the world for entities that should be tracked in my data
 -- structures but are not.  They are then either added to my tables
 -- or deleted from the world.
-local function find_unassociated_entities()
+find_unassociated_entities = function()
   -- Scan the surface for all of our hidden turrets so that later we
   -- can get rid of any not associated with a vehicle.
   local turrets = {};
@@ -314,26 +534,23 @@ local function find_unassociated_entities()
   -- this will catch things that might be left behind due to a bug in
   -- my code.
   for unit_number, t in pairs(turrets) do
-    log("WARNING: Should not happen: destroying unassociated turret " .. unit_number);
+    diag(1, "WARNING: Should not happen: destroying unassociated turret " .. unit_number);
     t.destroy();
   end;
 end;
 
 
--- Forward declaration of function defined later.
-local remove_entity_controller;
-
--- Find the vehicle controller among 'controllers' that is commanding
+-- Find the vehicle controller among 'pi_controllers' that is commanding
 -- them, if any.
-local function find_commander_controller(force, controllers)
-  for unit_number, controller in pairs(controllers) do
+local function find_commander_controller(pi_controllers)
+  for unit_number, controller in pairs(pi_controllers) do
     local v = controller.entity;
 
     -- It is possible for another mod to delete a vehicle without
     -- triggering one of the events I am monitoring.
     if (not v.valid) then
-      log("find_commander_controller: Removing invalid entity " .. unit_number .. ".");
-      remove_entity_controller(force, controller);
+      diag(3, "find_commander_controller: Removing invalid entity " .. unit_number .. ".");
+      remove_entity_controller(controller);
 
     elseif (v.speed == nil) then
       -- The commander must be a vehicle, and hence will have a speed.
@@ -342,7 +559,8 @@ local function find_commander_controller(force, controllers)
       -- This check prevents player characters from being commanders.
       -- I would have thought that checking the "car_trunk" inventory
       -- would suffice, but in fact the quick bar counts as the "trunk"
-      -- for a player!
+      -- for a player!  (As of Factorio 0.17, that is probably no longer
+      -- true.)
 
     elseif (v.name == "robotank") then
       -- A robotank cannot be a commander.
@@ -375,7 +593,7 @@ local function maybe_load_robotank_turret_ammo(controller)
   -- See if the turret needs another ammo magazine.
   local turret_inv = controller.turret.get_inventory(defines.inventory.turret_ammo);
   if (turret_inv == nil) then
-    log("Failed to get turret inventory!");
+    diag(1, "Failed to get turret inventory!");
     return;
   end;
 
@@ -389,7 +607,7 @@ local function maybe_load_robotank_turret_ammo(controller)
     -- put ammo into the robotank, the ammo slot gets populated first.
     local car_inv = controller.entity.get_inventory(defines.inventory.car_ammo);
     if (not car_inv) then
-      log("Failed to get car_ammo inventory!");
+      diag(1, "Failed to get car_ammo inventory!");
       return;
     end;
     local ammo_type = get_insertable_item(car_inv, turret_inv);
@@ -397,7 +615,7 @@ local function maybe_load_robotank_turret_ammo(controller)
       -- Try the trunk.
       car_inv = controller.entity.get_inventory(defines.inventory.car_trunk);
       if (not car_inv) then
-        log("Failed to get car_trunk inventory!");
+        diag(1, "Failed to get car_trunk inventory!");
         return;
       end;
       ammo_type = get_insertable_item(car_inv, turret_inv);
@@ -407,13 +625,13 @@ local function maybe_load_robotank_turret_ammo(controller)
       -- Move up to 'ammo_move_magazine_count' ammo magazines into the turret.
       local got = car_inv.remove{name=ammo_type, count=ammo_move_magazine_count};
       if (got < 1) then
-        log("Failed to remove ammo from trunk!");
+        diag(1, "Failed to remove ammo from trunk!");
       else
         local put = turret_inv.insert{name=ammo_type, count=got};
         if (put < 1) then
-          log("Failed to add ammo to turret!");
+          diag(1, "Failed to add ammo to turret!");
         else
-          log("Loaded " .. put .. " ammo magazines of type: " .. ammo_type);
+          diag(2, "Loaded " .. put .. " ammo magazines of type: " .. ammo_type);
         end;
       end;
     end;
@@ -499,13 +717,14 @@ local function predict_approach(p1, v1, p2, v2, dist)
 end;
 
 -- Return flags describing what is necessary for 'controller.entity'
--- to avoid colliding with one of the 'controllers'.  'controller' is
+-- to avoid colliding with one of the 'force_controllers', which are
+-- associated with all entities with the same force.  'controller' is
 -- known to be controlling a robotank entity and 'unit_number' is its
 -- unit number.
 --
 -- This function and its callees form the inner loop of this mod,
 -- where 70% of time is spent.
-local function collision_avoidance(tick, controllers, unit_number, controller)
+local function collision_avoidance(tick, force_controllers, unit_number, controller)
   local cannot_turn = false;
   local must_brake = false;
   local cannot_accelerate = false;
@@ -527,7 +746,7 @@ local function collision_avoidance(tick, controllers, unit_number, controller)
   --[[
   if (unit_number_to_nearby_controllers[unit_number] == nil) then
     unit_number_to_nearby_controllers[unit_number] = {};
-    for _, other in pairs(controllers) do
+    for _, other in pairs(force_controllers) do
       if (other.entity ~= v) then
         table.insert(unit_number_to_nearby_controllers[unit_number], other);
       end;
@@ -541,7 +760,7 @@ local function collision_avoidance(tick, controllers, unit_number, controller)
   ---[[
   if (unit_number_to_nearby_controllers[unit_number] == nil or (tick % 60 == 0)) then
     unit_number_to_nearby_controllers[unit_number] = {};
-    for _, other in pairs(controllers) do
+    for _, other in pairs(force_controllers) do
       if (other.entity ~= v) then
         -- The other entity is considered nearby if it is or will be
         -- within a certain, relatively large, distance before we next
@@ -634,11 +853,11 @@ local function can_reverse(tick, unit_number, controller)
       -- Contact would occur in back; is it soon?
       if (approach_ticks < 100) then
         if (tick % 60 == 0) then
-          log("Vehicle " .. v.unit_number ..
-              " cannot reverse because it would hit entity " ..
-              other.entity.unit_number ..
-              " at abs_orient_diff " .. abs_orient_diff ..
-              " in " .. approach_ticks .. " ticks.");
+          diag(2, "Vehicle " .. v.unit_number ..
+                  " cannot reverse because it would hit entity " ..
+                  other.entity.unit_number ..
+                  " at abs_orient_diff " .. abs_orient_diff ..
+                  " in " .. approach_ticks .. " ticks.");
         end;
         return false;
       end;
@@ -678,8 +897,9 @@ end;
 -- control of what the player can do with the WASD keys.  This is only
 -- called when we know there is a commander.
 --
--- 85% of time in this mod is spent in this function and its callees.
-local function drive_vehicle(tick, controllers, commander_vehicle,
+-- 85% of time in this mod is spent in this function and its callees (of
+-- which the bulk is 'collision_avoidance').
+local function drive_vehicle(tick, force_controllers, commander_vehicle,
                              commander_velocity, unit_number, controller)
   local v = controller.entity;
 
@@ -710,8 +930,9 @@ local function drive_vehicle(tick, controllers, commander_vehicle,
   end;
 
   -- Skip driving any tank that has a driver so it is possible for
-  -- a player to jump in a robotank and help it get unstuck.  (The
-  -- automatic turret will be disabled temporarily; see
+  -- a player to jump in a robotank and help it get unstuck, or to
+  -- use it for emergency escape if the player's tank gets destroyed.
+  -- (The automatic turret will be disabled temporarily; see
   -- on_player_driving_changed_state.)
   if (v.get_driver() ~= nil) then
     return;
@@ -751,7 +972,8 @@ local function drive_vehicle(tick, controllers, commander_vehicle,
     --
     -- The original threshold was 0.001.  I raised it to 0.0013 to
     -- reduce the likelihood a tank would circle in place after the
-    -- commander stops.
+    -- commander stops.  It's still not perfect, although continuing
+    -- to raise this threshold seems like the wrong approach.
     if (v_speed > 0) then
       pedal = defines.riding.acceleration.braking;
     else
@@ -800,7 +1022,7 @@ local function drive_vehicle(tick, controllers, commander_vehicle,
   -- Having decided what we would want to do in the absence of
   -- obstacles, restrict behavior in order to avoid collisions.
   local cannot_turn, must_brake, cannot_accelerate =
-    collision_avoidance(tick, controllers, unit_number, controller);
+    collision_avoidance(tick, force_controllers, unit_number, controller);
 
   -- Are we reversing out of a stuck position?  That overrides the
   -- decisions made above.
@@ -816,7 +1038,7 @@ local function drive_vehicle(tick, controllers, commander_vehicle,
         stopping = true;
       else
         -- We have come to a stop, we can leave this state.
-        log("Vehicle " .. unit_number .. " finished reversing.");
+        diag(2, "Vehicle " .. unit_number .. " finished reversing.");
         controller.reversing_until = nil;
       end;
     end;
@@ -862,16 +1084,20 @@ local function drive_vehicle(tick, controllers, commander_vehicle,
           -- We have successfully turned since becoming stopped, so
           -- we are not really stuck.  Reset the reference orientation
           -- and wait another 60 ticks.
-          log("Vehicle " .. unit_number .. " is stopped but turning, so not really stuck.");
+          diag(2, "Vehicle " .. unit_number .. " is stopped but turning, so not really stuck.");
           controller.stuck_orientation = v.orientation;
         elseif (can_reverse(tick, unit_number, controller)) then
-          log("Vehicle " .. unit_number .. " is stuck, trying to reverse out of it.");
+          diag(2, "Vehicle " .. unit_number .. " is stuck, trying to reverse out of it.");
           controller.stuck_since = nil;
           controller.stuck_orientation = nil;
           controller.reversing_until = tick + 60;
           reversing = true;
         else
-          log("Vehicle " .. unit_number .. " is stuck and cannot reverse.");
+          -- This message sometimes gets spammed to the log when a tank
+          -- is close to its desired position, but not quite there, and
+          -- is in the middle of a stopped pack of tanks.  It might be
+          -- nice to throttle the message at some point.
+          diag(2, "Vehicle " .. unit_number .. " is stuck and cannot reverse.");
         end;
       end;
     end;
@@ -921,21 +1147,21 @@ local function drive_vehicle(tick, controllers, commander_vehicle,
   --]]
 end;
 
--- Find the current commander of 'force' and deal with changes.
-local function refresh_commander(force, controllers)
+-- Find the current commander of 'player_index' and deal with changes.
+local function refresh_commander(player_index, pi_controllers)
   -- Get the old commander so I can detect changes.
-  local old_cc = global.force_to_commander_controller[force];
+  local old_cc = global.player_index_to_commander_controller[player_index];
 
   -- Find the new commander.
-  local new_cc = find_commander_controller(force, controllers);
+  local new_cc = find_commander_controller(pi_controllers);
 
   if (new_cc ~= old_cc) then
-    global.force_to_commander_controller[force] = new_cc;
+    global.player_index_to_commander_controller[player_index] = new_cc;
     if (new_cc == nil) then
-      log("Force " .. force .. " lost its commander.");
+      diag(2, "Player index " .. player_index .. " lost its commander.");
 
       -- Reset driving controls and formation positions.
-      for unit_number, controller in pairs(controllers) do
+      for unit_number, controller in pairs(pi_controllers) do
         if (controller.entity.name == "robotank-entity") then
           controller.entity.riding_state = {
             acceleration = defines.riding.acceleration.nothing,
@@ -945,12 +1171,12 @@ local function refresh_commander(force, controllers)
         end;
       end;
     elseif (old_cc == nil) then
-      log("Force " .. force .. " gained a commander: unit " .. new_cc.entity.unit_number);
-      --log("Commander vehicle: " .. serpent.block(entity_info(new_cc.entity)));
+      diag(2, "Player index " .. player_index .. " gained a commander: unit " .. new_cc.entity.unit_number);
+      diag(3, "Commander vehicle: " .. serpent.block(entity_info(new_cc.entity)));
     else
       -- TODO: This is not handled very well.  For example,
       -- we do not update formation positions.  (Should we?)
-      log("Force " .. force .. " changed commander to unit " .. new_cc.entity.unit_number);
+      diag(2, "Player index " .. player_index .. " changed commander to unit " .. new_cc.entity.unit_number);
     end;
   end;
 end;
@@ -959,75 +1185,88 @@ end;
 -- already done so.  Remove the turret if it is still valid, then
 -- remove the controller from all data structures.  Beware that the
 -- entity may be invalid here.
-remove_entity_controller = function(force, controller)
-  -- Make sure 'force' is a string since that is what my table uses.
-  local force = string_or_name_of(force);
-
+remove_entity_controller = function(controller)
   -- Destroy turret.
   if (controller.turret ~= nil and controller.turret.valid) then
     controller.turret.destroy();
     controller.turret = nil;
   end;
 
-  -- Remove references in the main table.
-  local controllers = global.force_to_controllers[force];
-  for unit_number, other in pairs(controllers) do
-    if (other == controller) then
-      -- Remove the controller from the main table.
-      controllers[unit_number] = nil;
-      log("Entity " .. unit_number .. " removed from controllers table.");
-    else
-      -- Refresh the nearby entities since the removed one might
-      -- be in that list.
-      unit_number_to_nearby_controllers[unit_number] = nil;
-    end;
-  end;
-
-  -- Check commander.
-  if (global.force_to_commander_controller[force] == controller) then
-    refresh_commander(force, controllers);
-  end;
-end;
-
--- Remove from our tables for any references to invalid entities.
---
--- Normally, entity removal is handled through events, but I want
--- a backup procedure now that I am also tracking player characters
--- since I don't fully understand their lifecycle.
-local function remove_invalid_entities()
-  for force, controllers in pairs(global.force_to_controllers) do
-    for unit_number, controller in pairs(controllers) do
-      if (not controller.entity.valid) then
-        log("Removing invalid entity " .. unit_number .. ".");
-        remove_entity_controller(force, controller);
+  -- Remove references from 'force_to_controllers'.  Since the entity
+  -- might not be valid, we resort to the slow method of scanning all
+  -- player indices.  (At some call sites I know the force, and/or that
+  -- the entity is valid, but I choose to make this as general as
+  -- possible despite the performance cost.)
+  for force, force_controllers in pairs(global.force_to_controllers) do
+    for unit_number, other in pairs(force_controllers) do
+      if (other == controller) then
+        force_controllers[unit_number] = nil;
+        diag(3, "Entity " .. unit_number .. " removed from force->controllers table.");
+      else
+        -- Refresh the nearby entities since the removed one might
+        -- be in that list.  We only do this for the force->controllers
+        -- loop, not PI->controllers, because the scope of nearby units
+        -- is the force.
+        unit_number_to_nearby_controllers[unit_number] = nil;
       end;
     end;
   end;
 
-  for force, controller in pairs(global.force_to_commander_controller) do
+  -- Remove references from 'player_index_to_controllers'.
+  for player_index, pi_controllers in pairs(global.player_index_to_controllers) do
+    for unit_number, other in pairs(pi_controllers) do
+      if (other == controller) then
+        pi_controllers[unit_number] = nil;
+        diag(3, "Entity " .. unit_number .. " removed from PI->controllers table.");
+      end;
+    end;
+
+    -- Check commander.
+    if (global.player_index_to_commander_controller[player_index] == controller) then
+      refresh_commander(player_index, pi_controllers);
+    end;
+  end;
+end;
+
+-- Remove from our tables any references to invalid entities.
+--
+-- Normally, entity removal is handled through events, but I want
+-- a backup procedure now that I am also tracking player characters
+-- since I don't fully understand their lifecycle.
+remove_invalid_entities = function()
+  for force, force_controllers in pairs(global.force_to_controllers) do
+    for unit_number, controller in pairs(force_controllers) do
+      if (not controller.entity.valid) then
+        diag(3, "Removing invalid entity " .. unit_number .. ".");
+        remove_entity_controller(controller);
+      end;
+    end;
+  end;
+
+  for player_index, controller in pairs(global.player_index_to_commander_controller) do
     if (not controller.entity.valid) then
       -- This can only happen if somehow the commander was not among
       -- the controllers scanned in the loop above, since if it was,
       -- it would already have been removed from the commander table
       -- as well.
-      log("Removing invalid commander of force \"" .. force .. "\".");
-      remove_entity_controller(force, controller);
+      diag(3, "Removing invalid commander of player_index " .. player_index .. ".");
+      remove_entity_controller(controller);
     end;
   end;
 end;
 
 
--- Do all per-tick updates for an entire force.
+-- Do all per-tick updates for a player index.
 --
 -- This function does a lot of different things because the cost of
 -- simply iterating through the tables is fairly high, so for speed
 -- I combine everything I can into one iteration.
 --
--- NOTE: On entry to this function, it may be that 'controllers' has
+-- NOTE: On entry to this function, it may be that 'pi_controllers' has
 -- references to invalid vehicles due to the actions of other mods,
 -- so we have to be careful.  I choose not to fully scan the tables
 -- on every tick due to the performance impact of that.
-local function update_robotank_force_on_tick(tick, force, controllers)
+local function update_robotank_player_index_on_tick(tick, player_index, pi_controllers)
   --- Some useful tick frequencies.
   local tick_1 = true;
   local tick_5 = ((tick % 5) == 0);
@@ -1037,11 +1276,11 @@ local function update_robotank_force_on_tick(tick, force, controllers)
 
   -- Refresh the commander periodically.
   if (tick_60) then
-    refresh_commander(force, controllers);
+    refresh_commander(player_index, pi_controllers);
   end;
 
-  -- Check if the force has a commander.
-  local commander_controller = global.force_to_commander_controller[force];
+  -- Check if the player index has a commander.
+  local commander_controller = global.player_index_to_commander_controller[player_index];
   local has_commander = (commander_controller ~= nil);
 
   -- True if we should do certain checks.  Reduce frequency when there
@@ -1063,8 +1302,8 @@ local function update_robotank_force_on_tick(tick, force, controllers)
     -- Double-check that the commander vehicle is valid.
     if (driving_commander_vehicle ~= nil and
         not driving_commander_vehicle.valid) then
-      log("on_tick: Commander vehicle is invalid!");
-      remove_entity_controller(force, commander_controller);
+      diag(2, "on_tick: Commander vehicle is invalid!");
+      remove_entity_controller(commander_controller);
       commander_controller = nil;
       has_commander = false;
       driving_commander_vehicle = nil;
@@ -1074,14 +1313,14 @@ local function update_robotank_force_on_tick(tick, force, controllers)
   end;
 
   -- Iterate over robotanks to perform maintenance on them.
-  for unit_number, controller in pairs(controllers) do
+  for unit_number, controller in pairs(pi_controllers) do
     if (controller.turret ~= nil) then
       local removed_vehicle = false;
 
       -- Double-check vehicle validity.
       if (not controller.entity.valid) then
-        log("on_tick: Vehicle " .. unit_number .. " is invalid!");
-        remove_entity_controller(force, controller);
+        diag(2, "on_tick: Vehicle " .. unit_number .. " is invalid!");
+        remove_entity_controller(controller);
         removed_vehicle = true;
 
       -- Transfer non-fatal damage sustained by the turret to the tank.
@@ -1090,7 +1329,7 @@ local function update_robotank_force_on_tick(tick, force, controllers)
         if (damage > 0) then
           local entity_health = controller.entity.health;
           if (entity_health <= damage) then
-            log("Fatal damage being transferred to robotank " .. unit_number .. ".");
+            diag(2, "Fatal damage being transferred to robotank " .. unit_number .. ".");
             controller.turret.destroy();
             controller.entity.die();       -- Destroy game object and make an explosion.
             removed_vehicle = true;        -- Skip turret maintenance.
@@ -1098,9 +1337,7 @@ local function update_robotank_force_on_tick(tick, force, controllers)
             -- The die() call will fire the on_entity_died event,
             -- whose handler will remove the controller from the
             -- tables.  So, let's just confirm that here.
-            if (controllers[unit_number] ~= nil) then
-              error("Killing the vehicle did not cause it to be removed from tables!");
-            end;
+            assert(pi_controllers[unit_number] == nil);
           else
             controller.entity.health = entity_health - damage;
             controller.turret.health = robotank_turret_max_health;
@@ -1132,7 +1369,7 @@ local function update_robotank_force_on_tick(tick, force, controllers)
             -- squad is moving, about 10% of the time in the mod is spent
             -- in this line of code, teleporting turrets.
             if (not controller.turret.teleport(controller.entity.position)) then
-              log("Failed to teleport turret!");
+              diag(1, "Failed to teleport turret!");
             end;
           end;
         end;
@@ -1144,7 +1381,12 @@ local function update_robotank_force_on_tick(tick, force, controllers)
 
         -- Adjust driving controls.
         if (check_driving) then
-          drive_vehicle(tick, controllers, driving_commander_vehicle,
+          -- Once we know the commander for a player_index, driving
+          -- considers all entities with the same force so that allies
+          -- will coordinate regarding not running into each other.
+          local force_controllers =
+            global.force_to_controllers[force_of_entity(controller.entity)];
+          drive_vehicle(tick, force_controllers, driving_commander_vehicle,
             driving_commander_velocity, unit_number, controller);
         end;
       end;
@@ -1157,7 +1399,7 @@ end;
 -- either case, we are transitioning from a global state in which
 -- RoboTank was absent to one where it is present.
 script.on_init(function()
-  log("RoboTank on_init called.");
+  diag(3, "RoboTank on_init called.");
 
   -- When I originally wrote
   -- the mod, I was confused about initialization events, so ended up
@@ -1166,6 +1408,9 @@ script.on_init(function()
   -- one of the other players was inside a vehicle when the game was
   -- saved.  (In that case, when the map is loaded, we get events
   -- saying the player has left the vehicle before any on_tick.)
+  --
+  -- There is also the consideration of the map editor, where on_tick
+  -- never runs at all.
   must_initialize_loaded_global_data = false;
   initialize_loaded_global_data();
 end);
@@ -1175,36 +1420,61 @@ end);
 -- can be performed here, none of which seem to apply to this mod:
 -- https://lua-api.factorio.com/latest/LuaBootstrap.html
 script.on_load(function()
-  log("RoboTank on_load called.");
+  diag(3, "RoboTank on_load called.");
 end);
 
 script.on_event(defines.events.on_tick, function(e)
   if (must_rescan_world) then
     if (must_initialize_loaded_global_data) then
-      log("RoboTank: running first tick initialization on tick " .. e.tick);
+      diag(3, "RoboTank: running first tick initialization on tick " .. e.tick);
       must_initialize_loaded_global_data = false;
       initialize_loaded_global_data();
     end;
 
-    log("RoboTank: rescanning world");
+    diag(3, "RoboTank: rescanning world");
     must_rescan_world = false;
     remove_invalid_entities();
     find_unassociated_entities();
   end;
 
-  -- For each force, update the robotanks.
-  for force, controllers in pairs(global.force_to_controllers) do
-    update_robotank_force_on_tick(e.tick, force, controllers);
+  -- For each player index, update the robotanks.
+  for player_index, pi_controllers in pairs(global.player_index_to_controllers) do
+    update_robotank_player_index_on_tick(e.tick, player_index, pi_controllers);
   end;
+
+  -- Possibly check invariants.
+  if ((e.tick % 60) == 0) then
+    check_or_fix_invariants();
+  end;
+
+  -- This is something I manually enable when I want to force the
+  -- invariant repair code to run.
+  --if ((e.tick % 600) == 0) then
+  --  reset_global_data();
+  --end;
 end);
+
+script.on_configuration_changed(
+  function(ccd)
+    if (must_initialize_loaded_global_data) then
+      diag(3, "RoboTank: on_configuration_changed: " .. serpent.block(ccd));
+
+      -- This is necessary because we need our tables updated sooner
+      -- than it happens via on_tick.  (Doing it in on_tick at all is
+      -- a mistake that I have yet to fully correct.)
+      diag(2, "RoboTank: on_configuration_changed: initializing global data");
+      must_initialize_loaded_global_data = false;
+      initialize_loaded_global_data();
+    end;
+  end
+);
 
 -- On built entity: add to tables.
 script.on_event({defines.events.on_built_entity, defines.events.on_robot_built_entity},
   function(e)
     local ent = e.created_entity;
-    --log("RoboTank: saw built event: " .. serpent.block(entity_info(ent)));
     if (ent.type == "car") then
-      local controller = add_entity(ent);
+      add_entity(ent);
     end;
   end
 );
@@ -1214,30 +1484,27 @@ script.on_event({defines.events.on_built_entity, defines.events.on_robot_built_e
 script.on_event({defines.events.on_player_mined_entity, defines.events.on_robot_mined_entity},
   function(e)
     if (e.entity.type == "car") then
-      log("Player or robot mined vehicle " .. e.entity.unit_number .. ".");
+      diag(2, "Player or robot mined vehicle " .. e.entity.unit_number .. ".");
 
       local controller = find_entity_controller(e.entity);
       if (controller) then
         if (controller.turret ~= nil) then
           -- When we pick up a robotank, also grab any unused ammo in
-          -- the turret entity so it is not lost.  That doesn't matter
-          -- much when cleaning up after a big battle, but it is annoying
-          -- to lose ammo if I put down a robotank and then pick it up
-          -- again without doing any fighting.
+          -- the turret entity so it is not lost.
           local turret_inv = controller.turret.get_inventory(defines.inventory.turret_ammo);
           if (turret_inv) then
             local res = copy_inventory_from_to(turret_inv, e.buffer);
-            log("Grabbed " .. res .. " items from the turret before it was destroyed.");
+            diag(2, "Grabbed " .. res .. " items from the turret before it was destroyed.");
           end;
         end;
 
-        remove_entity_controller(e.entity.force, controller);
+        remove_entity_controller(controller);
       else
         -- I am supposed to be keeping track of all vehicles by keeping
         -- track of the on_built event (which happens normally when the
         -- player puts the vehicle down into the world).  But mods can
         -- create vehicles without placing them, leading to this code.
-        log("But the vehicle was not in my tables.");
+        diag(2, "But the vehicle was not in my tables.");
       end;
     end;
   end
@@ -1248,15 +1515,15 @@ script.on_event({defines.events.on_player_mined_entity, defines.events.on_robot_
 script.on_event({defines.events.on_entity_died},
   function(e)
     if (e.entity.type == "car" or e.entity.name == "player") then
-      log("Vehicle or player " .. e.entity.unit_number .. " died.");
+      diag(2, "Vehicle or player " .. e.entity.unit_number .. " died.");
 
       local controller = find_entity_controller(e.entity);
       if (controller) then
-        remove_entity_controller(e.entity.force, controller);
+        remove_entity_controller(controller);
       else
         -- I am supposed to be keeping track of all vehicles and
         -- players, but might miss some due to mods.
-        log("But the vehicle or player was not in my tables.");
+        diag(2, "But the vehicle or player was not in my tables.");
       end;
 
     elseif (e.entity.name == "robotank-turret-entity") then
@@ -1265,13 +1532,13 @@ script.on_event({defines.events.on_entity_died},
       -- the turret's health being then restored to full.  But it is
       -- conceivable (perhaps with mods) that something does 1000 damage
       -- in a short time, which will lead to this code running.
-      log("A robotank turret was killed directly!");
+      diag(2, "A robotank turret was killed directly!");
 
       -- Find and remove the controller of the vehicle with this turret.
-      local force = string_or_name_of(e.entity.force);
+      local force = force_of_entity(e.entity);
       for unit_number, controller in pairs(global.force_to_controllers[force]) do
         if (controller.turret == e.entity) then
-          log("Killing the turret's owner, vehicle " .. unit_number .. ".");
+          diag(2, "Killing the turret's owner, vehicle " .. unit_number .. ".");
           controller.entity.die();
           break;
         end;
@@ -1283,10 +1550,9 @@ script.on_event({defines.events.on_entity_died},
 
 -- Called when an event fires that might change the set of player
 -- characters in the world.  I say "might" because I do not understand
--- the lifecycle and don't have an easy way to test things like
--- multiplayer.
+-- the lifecycle.
 local function on_players_changed()
-  log("RoboTank: on_players_changed");
+  diag(2, "RoboTank: on_players_changed");
 
   -- At this point, a removed player entity is not invalid yet.  We
   -- need to wait for the start of the next tick to detect that it is
@@ -1312,13 +1578,13 @@ script.on_event(
 
 
 local function on_player_driving_changed_state(event)
-  log("RoboTank: on_player_driving_changed_state: index=" .. event.player_index);
+  diag(3, "RoboTank: on_player_driving_changed_state: index=" .. event.player_index);
 
   local character = game.players[event.player_index].character;
   if (character ~= nil) then
     if (character.vehicle ~= nil) then
-      log("Player character " .. character.unit_number ..
-          " has entered vehicle " .. character.vehicle.unit_number .. ".");
+      diag(2, "Player character " .. character.unit_number ..
+              " has entered vehicle " .. character.vehicle.unit_number .. ".");
 
       local controller = find_entity_controller(character.vehicle);
       if (controller ~= nil and controller.turret ~= nil) then
@@ -1326,12 +1592,12 @@ local function on_player_driving_changed_state(event)
         -- That prevents a minor exploit where both the turret and
         -- the player-controlled tank machine gun could fire, thus
         -- effectively doubling the firepower of one vehicle.
-        log("Disabling turret of vehicle " .. controller.entity.unit_number .. ".");
+        diag(2, "Disabling turret of vehicle " .. controller.entity.unit_number .. ".");
         controller.turret.active = false;
       end;
     else
-      log("Player character " .. character.unit_number ..
-          " has exited a vehicle.");
+      diag(2, "Player character " .. character.unit_number ..
+              " has exited a vehicle.");
 
       -- If I load my mod in a game where the player character is inside
       -- a vehicle, the initial scan does not see it, presumably because
@@ -1341,12 +1607,12 @@ local function on_player_driving_changed_state(event)
       find_or_create_entity_controller(character);
 
       -- Re-activate any disabled turrets.
-      local controllers = global.force_to_controllers[string_or_name_of(character.force)];
-      for unit_number, controller in pairs(controllers) do
+      local pi_controllers = global.player_index_to_controllers[event.player_index];
+      for unit_number, controller in pairs(pi_controllers) do
         if (controller.turret ~= nil and
             controller.turret.active == false and
             controller.entity.get_driver() == nil) then
-          log("Re-enabling turret of vehicle " .. controller.entity.unit_number .. ".");
+          diag(2, "Re-enabling turret of vehicle " .. controller.entity.unit_number .. ".");
           controller.turret.active = true;
         end;
       end;

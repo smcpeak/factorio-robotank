@@ -11,6 +11,11 @@ TODO list for RoboTank mod
 - Sticker on robotanks not in a squad?
   - or low on ammo, or fuel, or stuck?
 - Open gate when a robotank approaches
+- Use LuaBootstrap::on_nth_tick instead of on_tick and tick%n test
+- Make the diagnostic verbosity configurable
+- When a tank is trying to turn by more than 90 degrees, hit the brakes
+- Find a better resolution to the problem of tanks spinning after commander stops
+- Throttle the message about a tank being stuck and cannot reverse
 
 Evidently infeasible:
 
