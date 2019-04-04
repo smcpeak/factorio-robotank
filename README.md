@@ -46,22 +46,25 @@ RoboTanks that become "stuck" will try to escape by reversing a
 short distance and trying again.
 
 You can get out of the commander tank and manually drive a wayward
-RoboTank to help it get where it is going.
+RoboTank to help it get where it is going--or, in an emergency, to
+escape from a battle gone horribly wrong!
 
 The logic has been fairly heavily optimized for speed.  On my test map
 with 40 tanks, RoboTank uses about 1ms per game tick when there is a
 commander, and about 20us per tick when there is no commander.  It is
 fast enough to use on megabase maps.
 
+In multiplayer usage, each player can have their own squad of tanks
+(but only one squad per player).  Allied tank squads will avoid running
+into each other, so can be maneuvered in reasonably close proximity.
+However, while the mod is intended to be usable in PvP scenarios, that
+has not been tested.
+
 Limitations
 ===========
 RoboTank collision avoidance is far from perfect.  They will run into
 each other and/or become stuck if you maneuver the commander too
 aggressively.
-
-This mod has only been lightly tested with multiplayer.  There can only
-be one commander (per force) right now, so only one of the players will be
-able to command the squad.
 
 You should only have one transmitter.  Putting transmitters in multiple
 vehicles will probably confuse the RoboTanks.
@@ -77,6 +80,14 @@ rampage inside your base before you notice.
 A portion of the ammo placed in a RoboTank seems to disappear.  This
 happens because, internally, it has been moved to a hidden turret entity
 that does the firing.  You get the ammo back when you pick up the tank.
+
+The new worm and spitter mechanics in Factorio 0.17 cause a balance issue
+because they are unable to properly lead RoboTanks due to the fact that
+the worms are actually shooting at the hidden turret entity, and turrets do not
+have a velocity attribute (the mod moves them via teleportation).  Thus,
+RoboTanks take less damage than a normal tank in similar circumstances.
+However, in my playtesting, there is still plenty of combat challenge
+when using RoboTanks to attack medium and large biter bases.
 
 Links
 =====
