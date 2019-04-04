@@ -330,9 +330,35 @@ local function add_entity(e)
   return controller;
 end;
 
+
+-- Search the entire data structure for a controller for 'entity',
+-- ignoring its force or player_index.
+local function find_entity_controller_slow_search(entity)
+  for force, force_controllers in pairs(global.force_to_controllers) do
+    for unit_number, controller in pairs(force_controllers) do
+      if (controller.entity == entity) then
+        return controller;
+      end;
+    end;
+  end;
+
+  return nil;
+end;
+
+
 -- Find the controller object associated with the given entity, if any.
 local function find_entity_controller(entity)
-  local pi_controllers = global.player_index_to_controllers[player_index_of_entity(entity)];
+  local player_index = player_index_of_entity(entity);
+  if (player_index < 0) then
+    -- This happens when the player dies.  Resort to a slow search of
+    -- the entire data structure to find the controller.  We are about
+    -- to remove the controller, so the invariant about controllers being
+    -- in the table of their player_index being temporarily broken should
+    -- not cause a problem.
+    diag(3, "find_entity_controller: player_index < 0, resorting to slow search");
+    return find_entity_controller_slow_search(entity);
+  end;
+  local pi_controllers = global.player_index_to_controllers[player_index];
   if (pi_controllers) then
     return pi_controllers[entity.unit_number];
   else
@@ -1512,6 +1538,9 @@ script.on_event({defines.events.on_player_mined_entity, defines.events.on_robot_
 
 
 -- Evidently, when this is called, the entity is still valid.
+--
+-- However, if the entity is a player character, it has already been
+-- disassociated from the player, so its player_index is -1.
 script.on_event({defines.events.on_entity_died},
   function(e)
     if (e.entity.type == "car" or e.entity.name == "player") then
