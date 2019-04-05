@@ -13,8 +13,6 @@ TODO list for RoboTank mod
 - Open gate when a robotank approaches
 - Use LuaBootstrap::on_nth_tick instead of on_tick and tick%n test
 - Make the diagnostic verbosity configurable
-- When a tank is trying to turn by more than 90 degrees, hit the brakes
-- Find a better resolution to the problem of tanks spinning after commander stops
 
 Evidently infeasible:
 

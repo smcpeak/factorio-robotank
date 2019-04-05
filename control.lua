@@ -111,6 +111,10 @@ local function new_entity_controller(e)
     -- packed formation of tanks, crude steering leads to unnecessary
     -- mutual interference as the tanks drift into each other.
     small_turn_ticks = nil,
+
+    -- When non-nil, we are accelerating for this many ticks, then
+    -- will coast.
+    short_acceleration_ticks = nil,
   };
 end;
 
@@ -933,6 +937,10 @@ local function drive_vehicle(tick, force_controllers, commander_vehicle,
   -- We are deciding what to do for this many ticks.
   local DRIVE_FREQUENCY = 5;
 
+  -- If our desired speed is below this, conclude we are at the
+  -- destination.
+  local LOW_DESIRED_SPEED = 0.0013;
+
   if (tick % DRIVE_FREQUENCY ~= 0) then
     -- Not driving on this tick.  But we might be completing a small turn.
     if (controller.small_turn_ticks ~= nil) then
@@ -941,11 +949,25 @@ local function drive_vehicle(tick, force_controllers, commander_vehicle,
         -- Finished making a small turn, straighten the wheel.
         v.riding_state = {
           acceleration = v.riding_state.acceleration,
-          direction = defines.riding.direction.straight;
+          direction = defines.riding.direction.straight,
         };
         controller.small_turn_ticks = nil;
       end;
     end;
+
+    -- And/or could be completing a limited duration acceleration.
+    if (controller.short_acceleration_ticks ~= nil) then
+      controller.short_acceleration_ticks = controller.short_acceleration_ticks - 1;
+      if (controller.short_acceleration_ticks == 0) then
+        -- Stop accelerating.
+        v.riding_state = {
+          acceleration = defines.riding.acceleration.nothing,
+          direction = v.riding_state.direction,
+        };
+        controller.short_acceleration_ticks = nil;
+      end;
+    end;
+
     return;
   end;
 
@@ -993,13 +1015,8 @@ local function drive_vehicle(tick, force_controllers, commander_vehicle,
   -- Copy vehicle speed into a local for better performance.
   local v_speed = v.speed;
 
-  if (desired_speed < 0.0013) then
+  if (desired_speed < LOW_DESIRED_SPEED) then
     -- Regard this as a desire to stop.
-    --
-    -- The original threshold was 0.001.  I raised it to 0.0013 to
-    -- reduce the likelihood a tank would circle in place after the
-    -- commander stops.  It's still not perfect, although continuing
-    -- to raise this threshold seems like the wrong approach.
     if (v_speed > 0) then
       pedal = defines.riding.acceleration.braking;
     else
@@ -1012,9 +1029,17 @@ local function drive_vehicle(tick, force_controllers, commander_vehicle,
 
     -- Difference with current orientation, in [-0.5, 0.5].
     local orient_diff = orientation_difference(v.orientation, desired_orientation);
-    if (orient_diff > 0.1) then
+    if (orient_diff > 0.25) then
+      -- Brake and turn left.
+      pedal = defines.riding.acceleration.braking;
+      turn = defines.riding.direction.left;
+    elseif (orient_diff > 0.1) then
       -- Coast and turn left.
       turn = defines.riding.direction.left;
+    elseif (orient_diff < -0.25) then
+      -- Brake and turn right.
+      pedal = defines.riding.acceleration.braking;
+      turn = defines.riding.direction.right;
     elseif (orient_diff < -0.1) then
       -- Coast and turn right.
       turn = defines.riding.direction.right;
@@ -1038,7 +1063,36 @@ local function drive_vehicle(tick, force_controllers, commander_vehicle,
 
       -- Decide whether to accelerate, coast, or brake.
       if (desired_speed > v_speed) then
-        pedal = defines.riding.acceleration.accelerating;
+        if (desired_speed < 0.05) then
+          -- At low speed, we need to avoid overshooting.  From my
+          -- experiments, at low speed, the tank accelerates at a rate
+          -- of about 0.01 per tick.
+          local accel_ticks = math.floor((desired_speed - v_speed) / 0.01);
+          if (v_speed == 0 and accel_ticks == 0) then
+            -- If not moving at all, force acceleration for one tick.
+            accel_ticks = 1;
+          end;
+
+          diag(4, "low speed vehicle " .. unit_number ..
+                  ": desired_speed=" .. desired_speed ..
+                  " v_speed=" .. v_speed ..
+                  " accel_ticks=" .. accel_ticks);
+
+          if (accel_ticks == 0) then
+            -- Coast.
+          else
+            -- Accelerate.
+            pedal = defines.riding.acceleration.accelerating;
+            if (accel_ticks < DRIVE_FREQUENCY) then
+              -- Accelerate for a limited number of ticks, then coast.
+              controller.short_acceleration_ticks = accel_ticks;
+            end;
+          end;
+        else
+          -- At high speed, we accelerate slowly enough that it should
+          -- suffice to take actions for DRIVE_FREQUENCY ticks.
+          pedal = defines.riding.acceleration.accelerating;
+        end;
       elseif (desired_speed < v_speed - 0.001) then
         pedal = defines.riding.acceleration.braking;
       end;
@@ -1086,7 +1140,7 @@ local function drive_vehicle(tick, force_controllers, commander_vehicle,
   -- about 0.003 once every 300 ticks (coincidentally the same as my
   -- stuck timer duration), even though it is not moving.  I think that
   -- is an artifact of Factorio collision mechanics.
-  if (desired_speed < 0.001) then
+  if (desired_speed < LOW_DESIRED_SPEED) then
     -- At destination, not stuck.
     controller.stuck_since = nil;
     controller.stuck_orientation = nil;
