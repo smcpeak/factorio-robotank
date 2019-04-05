@@ -86,8 +86,6 @@ because they are unable to properly lead RoboTanks due to the fact that
 the worms are actually shooting at the hidden turret entity, and turrets do not
 have a velocity attribute (the mod moves them via teleportation).  Thus,
 RoboTanks take less damage than a normal tank in similar circumstances.
-However, in my playtesting, there is still plenty of combat challenge
-when using RoboTanks to attack medium and large biter bases.
 
 Links
 =====
