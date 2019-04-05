@@ -30,6 +30,17 @@ data:extend({
     minimum_value = 1,
     maximum_value = 200,
   },
+
+  -- Diagnostic log verbosity level.  See 'diagnostic_verbosity' in
+  -- control.lua.
+  {
+    type = "int-setting",
+    name = "robotank-diagnostic-verbosity",
+    setting_type = "runtime-global",
+    default_value = 2,
+    minimum_value = 0,
+    maximum_value = 4,
+  },
   
   -- Color of a RoboTank.
   --

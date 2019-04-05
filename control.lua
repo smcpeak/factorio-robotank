@@ -20,9 +20,11 @@ local must_rescan_world = true;
 --      bug in the RoboTank mod, but are recoverable.
 --   2: Relatively infrequent things possibly of interest to the user,
 --      such as changes to the formation of tanks, tanks complaining
---      about being stuck, etc.
+--      about being stuck, loading ammo, etc.
 --   3: Changes to internal data structures.
 --   4: Details of algorithms.
+-- The default value here is overwritten by a configuration setting
+-- during initialization.
 local diagnostic_verbosity = 2;
 
 -- Maximum health of a robotank turret, needed to allow damage to be
@@ -154,6 +156,7 @@ local function read_configuration_settings()
   diag(3, "read_configuration_settings started");
   ammo_check_period_ticks = settings.global["robotank-ammo-check-period-ticks"].value;
   ammo_move_magazine_count = settings.global["robotank-ammo-move-magazine-count"].value;
+  diagnostic_verbosity = settings.global["robotank-diagnostic-verbosity"].value;
   diag(3, "read_configuration_settings finished");
 end;
 

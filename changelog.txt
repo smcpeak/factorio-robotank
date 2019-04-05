@@ -4,6 +4,7 @@ Date: 05.04.2019
   Features:
     - In multiplayer, allow each player to control their own squad of tanks.
     - Tanks now maneuver more carefully at low speed so the squad can stop more smoothly.
+    - Diagnostic log verbosity is now configurable.
 ---------------------------------------------------------------------------------------------------
 Version: 0.4.2
 Date: 02.04.2019

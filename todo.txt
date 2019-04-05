@@ -11,7 +11,6 @@ TODO list for RoboTank mod
   - or low on ammo, or fuel, or stuck?
 - Open gate when a robotank approaches
 - Use LuaBootstrap::on_nth_tick instead of on_tick and tick%n test
-- Make the diagnostic verbosity configurable
 
 Evidently infeasible:
 
