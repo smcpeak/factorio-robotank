@@ -4,7 +4,6 @@ TODO list for RoboTank mod
 - Organize robotanks into squads
   - Limit the number of tanks in a squad
   - Research to increase the squad size limit
-- Tanks tend to do a lot of unnecessary turning when commander stops.
 - Range limit on the transmitter?
 - Detect and avoid running into the shore
 - Press key to arrange squad in a line?
