@@ -177,7 +177,15 @@ end;
 local function player_index_of_entity(e)
   if (e.type == 'car') then
     -- Vehicle.
-    return e.last_user.index;
+    --
+    -- Normally vehicles always have a last_user, but with mods it is
+    -- evidently possible for last_user to be nil:
+    -- https://mods.factorio.com/mod/RoboTank/discussion/5cb114b4a07570000cfc3762
+    if (e.last_user == nil) then
+      return -1;
+    else
+      return e.last_user.index;
+    end;
   elseif (e.type == 'player') then
     -- Character.
     if (e.player ~= nil) then
@@ -238,6 +246,11 @@ local function check_invariants()
       -- changes that behavior, then my invariants will break, and this
       -- code will have to repair them.
       local player_index = player_index_of_entity(entity);
+      if (player_index < 0) then
+        diag(1, "WARNING: Entity " .. entity.unit_number ..
+                " does not have a player index.");
+        return false;
+      end;
       if (global.player_index_to_controllers[player_index][unit_number] ~= controller) then
         diag(1, "WARNING: Controller for entity " .. entity.unit_number ..
                 ", with player index " .. player_index ..
@@ -280,6 +293,8 @@ end;
 
 
 -- Add an entity to our tables and return its controller.
+--
+-- Some entities cannot have controllers, in which case return nil.
 local function add_entity(e)
   local force_name = force_of_entity(e);
   global.force_to_controllers[force_name] =
@@ -287,12 +302,13 @@ local function add_entity(e)
 
   local player_index = player_index_of_entity(e);
   if (player_index < 0) then
-    error("Cannot add entity due to lack of player index:" ..
+    diag(3, "Cannot add entity due to lack of player index:" ..
           " unit=" .. e.unit_number ..
           " type=" .. e.type ..
           " name=" .. e.name ..
           " pos=(" .. e.position.x .. "," .. e.position.y .. ")" ..
           " force=" .. force_name);
+    return nil;
   end;
   global.player_index_to_controllers[player_index] =
     global.player_index_to_controllers[player_index] or {};
@@ -440,11 +456,16 @@ local function initialize_loaded_global_data()
         local entity = controller.entity;
         if (entity.valid) then
           local player_index = player_index_of_entity(entity);
-          assert(player_index >= 0);
-          global.player_index_to_controllers[player_index] =
-            global.player_index_to_controllers[player_index] or {}
-          global.player_index_to_controllers[player_index][unit_number] = controller;
-          diag(3, "added unit " .. unit_number .. " to player_index " .. player_index);
+          if (player_index < 0) then
+            -- I do not know if this can happen.
+            diag(3, "unit " .. unit_number .. " has no player index, removing it");
+            force_controllers[unit_number] = nil;
+          else
+            global.player_index_to_controllers[player_index] =
+              global.player_index_to_controllers[player_index] or {}
+            global.player_index_to_controllers[player_index][unit_number] = controller;
+            diag(3, "added unit " .. unit_number .. " to player_index " .. player_index);
+          end;
         else
           -- One way this happens is if the loaded map was saved with
           -- multiple players in it, but is then loaded with only one
@@ -514,6 +535,8 @@ end;
 
 -- If there is already a controller for 'entity', return it.  Otherwise,
 -- make a new controller and return that.
+--
+-- If this entity cannot have a controller, return nil.
 local function find_or_create_entity_controller(entity)
   local controller = find_entity_controller(entity);
   if (controller ~= nil) then
@@ -533,7 +556,7 @@ local function found_an_entity(e, turrets)
 
   -- See if we already know about this entity.
   local controller = find_or_create_entity_controller(e);
-  if (controller.turret ~= nil) then
+  if (controller ~= nil and controller.turret ~= nil) then
     -- This turret is now accounted for (it might have existed before,
     -- or it might have just been created by 'add_entity').
     turrets[controller.turret.unit_number] = nil;
