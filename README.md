@@ -87,6 +87,15 @@ the worms are actually shooting at the hidden turret entity, and turrets do not
 have a velocity attribute (the mod moves them via teleportation).  Thus,
 RoboTanks take less damage than a normal tank in similar circumstances.
 
+Known Issues with Other Mods
+============================
+[SchallTankPlatoon](https://mods.factorio.com/mod/SchallTankPlatoon) introduces
+a replacement suite of armored vehicles.  Any of its vehicles can function as a
+commander, but none can be robotically controlled.  Additionally, by default it
+disables the recipe for the vanilla tank, but that is an ingredient for a RoboTank,
+so one must change the SchallTankPlatoon configuration settings (in the GUI) to
+re-enable the vanilla recipe.
+
 Links
 =====
 Factorio mod portal page: https://mods.factorio.com/mods/smcpeak/RoboTank
