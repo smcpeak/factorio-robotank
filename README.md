@@ -81,6 +81,9 @@ A portion of the ammo placed in a RoboTank seems to disappear.  This
 happens because, internally, it has been moved to a hidden turret entity
 that does the firing.  You get the ammo back when you pick up the tank.
 
+Also, RoboTanks can only fire bullet ammunition, not flamethrower or
+cannon shells.
+
 The new worm and spitter mechanics in Factorio 0.17 cause a balance issue
 because they are unable to properly lead RoboTanks due to the fact that
 the worms are actually shooting at the hidden turret entity, and turrets do not
