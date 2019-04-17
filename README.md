@@ -97,7 +97,8 @@ a replacement suite of armored vehicles.  Any of its vehicles can function as a
 commander, but none can be robotically controlled.  Additionally, by default it
 disables the recipe for the vanilla tank, but that is an ingredient for a RoboTank,
 so one must change the SchallTankPlatoon configuration settings (in the GUI) to
-re-enable the vanilla recipe.
+re-enable the vanilla recipe.  See the
+[SchallTankPlatoon FAQ](https://mods.factorio.com/mod/SchallTankPlatoon/faq) for details.
 
 Links
 =====
