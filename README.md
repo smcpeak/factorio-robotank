@@ -27,7 +27,7 @@ Next, place a normal tank in the world.  This will be the commander,
 and you will drive it manually.  Near the commander, place your
 RoboTank(s).  Where you put the RoboTanks in relation to the commander
 matters, as they will remember it as their formation position.
-Add fuel and ammo (bullets) to the RoboTanks.
+Add fuel and ammo (bullets or cannon shells) to the RoboTanks.
 
 Finally, put the RoboTank Transmitter into the inventory of the commander
 and start driving it.  The RoboTanks will drive themselves to stay in
@@ -39,6 +39,13 @@ with transmitter in it) to come into existence.
 
 Features
 ========
+RoboTanks can fire either bullets or cannon shells, depending on
+which is loaded into the ammo slot first.  Once that category is
+exhausted, it will switch to the other category if available in an
+ammo slot.  Otherwise it will try to take more ammo of the currently
+active category from the vehicle trunk, but will not switch ammo
+categories by taking from the trunk.
+
 RoboTanks will try to avoid running into each other, with any other
 vehicle, and with the player.
 
@@ -81,14 +88,20 @@ A portion of the ammo placed in a RoboTank seems to disappear.  This
 happens because, internally, it has been moved to a hidden turret entity
 that does the firing.  You get the ammo back when you pick up the tank.
 
-Also, RoboTanks can only fire bullet ammunition, not flamethrower or
-cannon shells.
+The vanilla cannon shells do friendly fire damage.  The RoboTank firing
+logic is oblivious to this, and will therefore damage other squad members
+while trying to hit nearby enemies with cannon shells.
+
+RoboTanks cannot fire flamethrower ammo.
 
 The new worm and spitter mechanics in Factorio 0.17 cause a balance issue
 because they are unable to properly lead RoboTanks due to the fact that
 the worms are actually shooting at the hidden turret entity, and turrets do not
 have a velocity attribute (the mod moves them via teleportation).  Thus,
-RoboTanks take less damage than a normal tank in similar circumstances.
+RoboTanks may take less damage than a normal tank in similar circumstances.
+In other situations they can take more damage because area-of-effect weapons
+damage both the vehicle and its hidden turret.  I still haven't completely
+sorted all this out.
 
 Known Issues with Other Mods
 ============================

@@ -4,12 +4,20 @@
 
 -------------------------- Tables -----------------------
 
+-- Keys of a table, as an unordered array.
+function table_keys_array(t)
+  local a = {};
+  for n in pairs(t) do
+    table.insert(a, n);
+  end;
+  return a;
+end;
+
 -- The pairs of a table, ordered by key.
--- https://www.lua.org/pil/19.3.html
+-- Based on: https://www.lua.org/pil/19.3.html
 function ordered_pairs (t, f)
-  local a = {}
-  for n in pairs(t) do table.insert(a, n) end
-  table.sort(a, f)
+  local a = table_keys_array(t);
+  table.sort(a, f);
   local i = 0      -- iterator variable
   local iter = function ()   -- iterator function
     i = i + 1

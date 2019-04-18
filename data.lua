@@ -1,13 +1,16 @@
 -- RoboTank data.lua
 -- Extend the global data table to describe the mod elements.
 
+-- Debug option: Show the "hidden" turret.
+local show_hidden_turret = false;
+
 -- Tint to apply to robotanks to distinguish them visually from
 -- other vehicles.
 local robotank_tint = {
   r = settings.startup["robotank-color-red"].value;
   g = settings.startup["robotank-color-green"].value;
   b = settings.startup["robotank-color-blue"].value;
-  
+
   -- The alpha value is not configurable.  If this is less than
   -- one, the tank is partially transparent, which looks wrong.
   a = 1.0,
@@ -144,6 +147,9 @@ end;
 -- of that is what I intend.  I have not carefully tested any of it,
 -- however.
 local robotank_turret_entity = table.deepcopy(data.raw["ammo-turret"]["gun-turret"]);
+
+-- This should ideally be renamed to "robotank-gun-turret-entity", but
+-- I don't know how to do that in a backward compatible way yet.
 robotank_turret_entity.name = "robotank-turret-entity";
 
 -- Do not collide with parent tank.
@@ -164,16 +170,17 @@ robotank_turret_entity.minable = nil;
 
 -- Copy the damage characteristics of the tank machine gun to
 -- the robotank turret.
-local tank_machine_gun = data.raw.gun["tank-machine-gun"];
-robotank_turret_entity.attack_parameters.cooldown        = tank_machine_gun.attack_parameters.cooldown;
-robotank_turret_entity.attack_parameters.range           = tank_machine_gun.attack_parameters.range;
-robotank_turret_entity.attack_parameters.damage_modifier = tank_machine_gun.attack_parameters.damage_modifier;
+robotank_turret_entity.attack_parameters =
+  table.deepcopy(data.raw.gun["tank-machine-gun"].attack_parameters);
 
 -- Also match its resistances to those of the tank, since in most
 -- cases it is the turret that will be taking damage from enemies.
 robotank_turret_entity.resistances = table.deepcopy(robotank_entity.resistances);
 
 -- Raise the turret's max health to ensure it won't be one-shot by anything.
+--
+-- Note that other mods might change this value afterward.  I know that the
+-- walls-block-spitters mod does so.
 robotank_turret_entity.max_health = 1000;
 
 robotank_turret_entity.flags = {
@@ -198,10 +205,18 @@ robotank_turret_entity.alert_icon_shift = robotank_entity.alert_icon_shift;
 -- alert related to attacking is just useless noise.
 robotank_turret_entity.alert_when_attacking = false;
 
+-- Match turret rotation to the vehicle.
+robotank_turret_entity.rotation_speed = robotank_entity.turret_rotation_speed;
 
--- Remove all of the graphics associated with the turret since they
--- overlay weirdly on the tank and aren't needed since the tank itself
--- provides more or less adequate visuals.
+-- "Folding" should happen virtually instantaneously, since the vehicle
+-- turret does not actually retract.  I do not know the units of this
+-- "speed", but the default is 0.08, and experimentally I determined that
+-- smaller numbers make it slower.
+robotank_turret_entity.folding_speed = 100;
+robotank_turret_entity.preparing_speed = 100;
+
+
+-- A blank image to substitute away certain graphics.
 local blank_layers = {
   layers = {
     {
@@ -214,12 +229,42 @@ local blank_layers = {
     },
   },
 };
-robotank_turret_entity.attacking_animation = blank_layers;
+
+-- Always hide the turret base image.
 robotank_turret_entity.base_picture = blank_layers;
-robotank_turret_entity.folded_animation = blank_layers;
-robotank_turret_entity.folding_animation = blank_layers;
-robotank_turret_entity.prepared_animation = blank_layers;
-robotank_turret_entity.preparing_animation = blank_layers;
+
+if (not show_hidden_turret) then
+  -- Remove the turret graphics.
+  robotank_turret_entity.attacking_animation = blank_layers;
+  robotank_turret_entity.folded_animation    = blank_layers;
+  robotank_turret_entity.folding_animation   = blank_layers;
+  robotank_turret_entity.prepared_animation  = blank_layers;
+  robotank_turret_entity.preparing_animation = blank_layers;
+
+else
+  -- When showing the turret, push the RoboTank into a lower render
+  -- layer.  This is the same layer as biter corpses, so it does not
+  -- look good, but it ensures I can always see the turret.  (It is
+  -- not possible to raise the turret render layer.)
+  robotank_entity.render_layer = "lower-object-above-shadow";
+
+end;
+
+
+-- Make a hidden cannon turret as well so that RoboTanks have the option
+-- to fire cannon shells.
+local robotank_cannon_turret_entity = table.deepcopy(robotank_turret_entity);
+robotank_cannon_turret_entity.name = "robotank-cannon-turret-entity";
+robotank_cannon_turret_entity.attack_parameters =
+  table.deepcopy(data.raw.gun["tank-cannon"].attack_parameters);
+
+-- This prevents the RoboTank from damaging itself when using the cannon.
+--
+-- It hits itself sometimes with min_range of 4, even though that seems
+-- like it should be well beyond the danger zone.
+robotank_cannon_turret_entity.attack_parameters.min_range = 5;
+robotank_cannon_turret_entity.attack_parameters.projectile_creation_distance = 5;
+
 
 -- Push these new things into the main data table.
 data:extend{
@@ -230,6 +275,7 @@ data:extend{
   robotank_item,
   robotank_entity,
   robotank_turret_entity,
+  robotank_cannon_turret_entity,
 };
 
 
