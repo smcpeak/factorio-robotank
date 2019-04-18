@@ -1597,16 +1597,18 @@ local function update_robotank_player_index_on_tick(tick, player_index, pi_contr
           end;
         end;
 
-        -- Match vehicle turret orientation to the hidden turret.
-        --
-        -- This has to be done on every tick, since otherwise the vehicle
-        -- turret tries to return to its default position, causing
-        -- oscillation as the two effects fight.
-        --
-        -- TODO: Measure the performance impact of this.
-        controller.entity.relative_turret_orientation =
-          normalize_orientation(controller.turret.orientation -
-                                controller.entity.orientation);
+        if (controller.turret.active) then
+          -- Match vehicle turret orientation to the hidden turret.
+          --
+          -- This has to be done on every tick, since otherwise the vehicle
+          -- turret tries to return to its default position, causing
+          -- oscillation as the two effects fight.
+          --
+          -- TODO: Measure the performance impact of this.
+          controller.entity.relative_turret_orientation =
+            normalize_orientation(controller.turret.orientation -
+                                  controller.entity.orientation);
+        end;
 
         -- Replenish turret ammo.
         if (check_ammo) then
