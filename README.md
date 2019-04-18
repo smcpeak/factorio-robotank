@@ -46,6 +46,14 @@ ammo slot.  Otherwise it will try to take more ammo of the currently
 active category from the vehicle trunk, but will not switch ammo
 categories by taking from the trunk.
 
+The vanilla cannon shells do friendly fire damage.  The RoboTank firing
+logic is oblivious to this, and will therefore damage other squad members
+while trying to hit nearby enemies with cannon shells.  Consequently,
+this mod introduces four variants of "smart" cannon shells (ordinary,
+explosive, uranium, and explosive uranium) that can pass through friendly
+units, along with research to unlock them.  But, beware that the explosive
+varieties still deal friendly fire splash damage.
+
 RoboTanks will try to avoid running into each other, with any other
 vehicle, and with the player.
 
@@ -87,10 +95,6 @@ rampage inside your base before you notice.
 A portion of the ammo placed in a RoboTank seems to disappear.  This
 happens because, internally, it has been moved to a hidden turret entity
 that does the firing.  You get the ammo back when you pick up the tank.
-
-The vanilla cannon shells do friendly fire damage.  The RoboTank firing
-logic is oblivious to this, and will therefore damage other squad members
-while trying to hit nearby enemies with cannon shells.
 
 RoboTanks cannot fire flamethrower ammo.
 

@@ -38,28 +38,7 @@ local robotank_technology = {
     "robotics",                        -- Flying robot frame.
     "tanks"                            -- Ordinary tank.
   },
-  unit = {                             -- Same cost as tanks.
-    count = 250,
-    ingredients = {
-      {
-        "automation-science-pack",
-        1
-      },
-      {
-        "logistic-science-pack",
-        1
-      },
-      {
-        "chemical-science-pack",
-        1
-      },
-      {
-        "military-science-pack",
-        1
-      }
-    },
-    time = 30
-  }
+  unit = data.raw["technology"].tanks.unit,   -- Same cost as tanks.
 };
 
 -- Recipe to allow one to create the transmitter that controls robotanks.
@@ -266,7 +245,7 @@ robotank_cannon_turret_entity.attack_parameters.min_range = 5;
 robotank_cannon_turret_entity.attack_parameters.projectile_creation_distance = 5;
 
 
--- Push these new things into the main data table.
+-- Push the RoboTank things into the main data table.
 data:extend{
   robotank_technology,
   transmitter_recipe,
@@ -276,6 +255,127 @@ data:extend{
   robotank_entity,
   robotank_turret_entity,
   robotank_cannon_turret_entity,
+};
+
+
+-- ====================================================================
+-- ========================= Smart Shells =============================
+-- ====================================================================
+
+-- Smart shells are conceptually separable from RoboTank, but in
+-- practice, firing dumb shells from RoboTanks causes too much
+-- friendly fire, so smart shells are a necessary addition.  I might
+-- split this out as its own mod at some point.
+
+-- Technology to make smart cannon shells.
+local smart_cannon_shell_technology = {
+  type = "technology",
+  name = "smart-cannon-shell-technology",
+  effects = {
+    {
+      type = "unlock-recipe",
+      recipe = "smart-cannon-shell-recipe",
+    },
+    {
+      type = "unlock-recipe",
+      recipe = "smart-explosive-cannon-shell-recipe",
+    },
+  },
+  icon = "__RoboTank__/graphics/technology/smart-cannon-shell-technology.png",
+  icon_size = 64,
+  order = "e-c-c-3",                   -- After RoboTanks.
+  prerequisites = {
+    "tanks"                            -- Ordinary tank, which implies red circuit.
+  },
+  unit = data.raw["technology"].tanks.unit,   -- Same cost as tanks.
+};
+
+local smart_uranium_cannon_shell_technology = {
+  type = "technology",
+  name = "smart-uranium-cannon-shell-technology",
+  effects = {
+    {
+      type = "unlock-recipe",
+      recipe = "smart-uranium-cannon-shell-recipe",
+    },
+    {
+      type = "unlock-recipe",
+      recipe = "smart-explosive-uranium-cannon-shell-recipe",
+    },
+  },
+  icon = "__RoboTank__/graphics/technology/smart-uranium-cannon-shell-technology.png",
+  icon_size = 64,
+  order = "e-a-b-2",                   -- After Uranium Ammunition.
+  prerequisites = {
+    "uranium-ammo"
+  },
+  unit = data.raw["technology"]["uranium-ammo"].unit,
+};
+
+
+-- Extend the data table with a recipe, item, and projectile for a
+-- smart shell based on 'base_prefix'.
+local function add_smart_shell(base_prefix)
+  local base_shell_name      = base_prefix .. "-shell";
+  local base_projectile_name = base_prefix .. "-projectile";
+
+  local recipe_name     = "smart-" .. base_shell_name .. "-recipe";
+  local item_name       = "smart-" .. base_shell_name .. "-item";
+  local projectile_name = "smart-" .. base_shell_name .. "-projectile";
+
+  -- The recipe is one base shell and one red circuit.
+  local recipe = {
+    type = "recipe",
+    name = recipe_name,
+    enabled = false,
+    energy_required = 2,               -- 2 seconds to build.
+    ingredients = {
+      {base_shell_name, 1},
+      {"advanced-circuit", 1},
+    },
+    result = item_name,
+  };
+
+  -- Smart shell is basically the same as an ordinary shell
+  -- except we override the projectile.
+  local base_item = data.raw.ammo[base_shell_name];
+  local item = {
+    type = "ammo",
+    name = item_name,
+    description = item_name,
+    icon = "__RoboTank__/graphics/icons/" .. item_name .. ".png",
+    icon_size = 32,
+    ammo_type = table.deepcopy(base_item.ammo_type),
+    magazine_size = base_item.magazine_size,
+    subgroup = "ammo",
+    order = base_item.order .. "-s[smart]",
+    stack_size = base_item.stack_size,
+  };
+  item.ammo_type.action.action_delivery.projectile = projectile_name;
+
+  -- The smart projectile is the same except we eliminate friendly fire.
+  local projectile = table.deepcopy(data.raw.projectile[base_projectile_name]);
+  projectile.name = projectile_name;
+
+  -- https://wiki.factorio.com/Prototype/Projectile
+  -- https://wiki.factorio.com/Types/ForceCondition
+  --
+  -- There is a bug here: with "not-friend", I cannot shoot rocks and
+  -- trees.  With "not-same", rocks and trees can be shot, but so can
+  -- allies.
+  projectile.force_condition = "not-friend";
+
+  data:extend{recipe, item, projectile};
+end;
+
+add_smart_shell("cannon");
+add_smart_shell("explosive-cannon");
+add_smart_shell("uranium-cannon");
+add_smart_shell("explosive-uranium-cannon");
+
+data:extend{
+  smart_cannon_shell_technology,
+  smart_uranium_cannon_shell_technology,
 };
 
 
