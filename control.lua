@@ -1597,14 +1597,26 @@ local function update_robotank_player_index_on_tick(tick, player_index, pi_contr
           end;
         end;
 
-        if (controller.turret.active) then
+        if (has_commander and controller.turret.active) then
           -- Match vehicle turret orientation to the hidden turret.
           --
           -- This has to be done on every tick, since otherwise the vehicle
           -- turret tries to return to its default position, causing
           -- oscillation as the two effects fight.
           --
-          -- TODO: Measure the performance impact of this.
+          -- I disable this when there is no commander because the logic
+          -- above causes this code to only run every 5 ticks with no
+          -- commander.  The turret is still active without a commander,
+          -- and will therefore can fire in a direction different from the
+          -- visible vehicle turret, but I accept that minor infidelity.
+          --
+          -- I would like to be able to detect when the hidden turret
+          -- "folds" itself due to inactivity, and in that case slave the
+          -- hidden turret to the visible turret, but I do not know of any
+          -- way to detect turret inactivity.
+          --
+          -- Around 10% of run time is spent doing this on a large map with
+          -- 40 tanks and a commander.
           controller.entity.relative_turret_orientation =
             normalize_orientation(controller.turret.orientation -
                                   controller.entity.orientation);
@@ -1679,9 +1691,10 @@ script.on_event(defines.events.on_tick, function(e)
   end;
 
   -- Possibly check invariants.
-  --
-  -- TODO: I am concerned about the performance impact of this.
-  if ((e.tick % 60) == 0) then
+  if ((e.tick % 600) == 0) then
+    -- This is not currently very expensive to run.  Even if run on
+    -- every tick, the cost of the mod merely doubles.  But I will
+    -- run it infrequently anyway.
     check_or_fix_invariants();
   end;
 
