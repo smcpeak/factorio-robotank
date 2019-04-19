@@ -46,14 +46,6 @@ ammo slot.  Otherwise it will try to take more ammo of the currently
 active category from the vehicle trunk, but will not switch ammo
 categories by taking from the trunk.
 
-The vanilla cannon shells do friendly fire damage.  The RoboTank firing
-logic is oblivious to this, and will therefore damage other squad members
-while trying to hit nearby enemies with cannon shells.  Consequently,
-this mod introduces four variants of "smart" cannon shells (ordinary,
-explosive, uranium, and explosive uranium) that can pass through friendly
-units, along with research to unlock them.  But, beware that the explosive
-varieties still deal friendly fire splash damage.
-
 RoboTanks will try to avoid running into each other, with any other
 vehicle, and with the player.
 
@@ -65,7 +57,7 @@ RoboTank to help it get where it is going--or, in an emergency, to
 escape from a battle gone horribly wrong!
 
 The logic has been fairly heavily optimized for speed.  On my test map
-with 40 tanks, RoboTank uses about 1ms per game tick when there is a
+with 40 tanks, RoboTank uses about 1.3ms per game tick when there is a
 commander, and about 20us per tick when there is no commander.  It is
 fast enough to use on megabase maps.
 
@@ -77,6 +69,12 @@ has not been tested.
 
 Limitations
 ===========
+The vanilla cannon shells do friendly fire damage.  The RoboTank firing
+logic is oblivious to this, and will therefore damage other squad members
+while trying to hit nearby enemies with cannon shells.  You may want to
+install [SmartCannonShells](https://mods.factorio.com/mods/smcpeak/SmartCannonShells)
+alongside RoboTank if you use cannon shells in RoboTanks.
+
 RoboTank collision avoidance is far from perfect.  They will run into
 each other and/or become stuck if you maneuver the commander too
 aggressively.
@@ -120,6 +118,6 @@ Links
 =====
 Factorio mod portal page: https://mods.factorio.com/mods/smcpeak/RoboTank
 
-Forum discussion page: https://forums.factorio.com/viewtopic.php?f=93&t=55411
+SmartCannonShells mod: https://mods.factorio.com/mods/smcpeak/SmartCannonShells
 
 Demo video on YouTube: https://www.youtube.com/watch?v=M64LyVkl6Ac
