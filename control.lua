@@ -27,10 +27,8 @@ local must_rescan_world = true;
 -- during initialization.
 local diagnostic_verbosity = 2;
 
--- Maximum health of a robotank turret, needed to allow damage to be
--- transferred to the tank properly.  This will be set to its proper
--- value during initialization.
-local robotank_turret_max_health = 0;
+-- Debug option to log all damage taken.
+local log_all_damage = false;
 
 -- Ticks between ammo checks.  Set during initialization.
 local ammo_check_period_ticks = 0;
@@ -135,6 +133,22 @@ end;
 --
 -- Fortunately, it is easy to recompute after a load.
 local unit_number_to_nearby_controllers = {};
+
+
+-- Map from hidden turret entity name to true.
+local robotank_turret_entity_name_set = {
+  ["robotank-turret-entity"]        = true,
+  ["robotank-cannon-turret-entity"] = true,
+};
+
+-- Map from ammo_category to hidden turret entity name that can fire
+-- that kind of ammo.
+--
+-- Eventually I'd like to expand this to handle more ammo types.
+local ammo_category_to_turret_name = {
+  ["bullet"]              = "robotank-turret-entity",
+  ["cannon-shell"]        = "robotank-cannon-turret-entity",
+};
 
 
 -- Forward declarations of functions.
@@ -292,6 +306,17 @@ local function check_or_fix_invariants()
 end;
 
 
+-- Return an array of turret entity names.
+local function robotank_turret_entity_name_array()
+  return table_keys_array(robotank_turret_entity_name_set);
+end;
+
+-- True if the given string is the name of a robotank turret entity.
+local function is_robotank_turret_entity_name(s)
+  return robotank_turret_entity_name_set[s] == true
+end;
+
+
 -- Add an entity to our tables and return its controller.
 --
 -- Some entities cannot have controllers, in which case return nil.
@@ -322,18 +347,20 @@ local function add_entity(e)
     local p = controller.entity.position;
     local candidates = e.surface.find_entities_filtered{
       area = {{p.x-0.5, p.y-0.5}, {p.x+0.5, p.y+0.5}},
-      name = "robotank-turret-entity"
+      name = robotank_turret_entity_name_array(),
     };
     if (#candidates > 0) then
       controller.turret = candidates[1];
       diag(3, "Found existing turret with unit number " .. controller.turret.unit_number .. ".");
     else
       controller.turret = e.surface.create_entity{
+        -- Initially, create it as a gun turret.  It may be changed
+        -- once we load some ammo.
         name = "robotank-turret-entity",
         position = controller.entity.position,
         force = e.force};
       if (controller.turret) then
-        diag(3, "Made new turret.");
+        diag(3, "Made new turret: " .. controller.turret.name .. ".");
       else
         -- This unfortunately is not recoverable because I do not check
         -- for a nil turret elsewhere, both for simplicity of logic and
@@ -519,12 +546,6 @@ local function initialize_loaded_global_data()
     end;
   end;
 
-  -- Read the max health from the prototypes table.  This resolves a
-  -- conflict with the walls-block-spitters mod, which adjusts the
-  -- max health of all turrets.
-  robotank_turret_max_health = game.entity_prototypes["robotank-turret-entity"].max_health;
-  diag(3, "robotank turret max health: " .. robotank_turret_max_health);
-
   -- Deal with loading a map that had players in it when saved
   -- but the players are now gone.
   remove_invalid_entities();
@@ -571,7 +592,7 @@ find_unassociated_entities = function()
   -- Scan the surface for all of our hidden turrets so that later we
   -- can get rid of any not associated with a vehicle.
   local turrets = {};
-  for _, t in ipairs(game.surfaces[1].find_entities_filtered{name="robotank-turret-entity"}) do
+  for _, t in ipairs(game.surfaces[1].find_entities_filtered{name=robotank_turret_entity_name_array()}) do
     turrets[t.unit_number] = t;
   end;
 
@@ -658,36 +679,120 @@ local function maybe_load_robotank_turret_ammo(controller)
   -- ammo is empty, so the turret stops firing and shows the no-ammo icon
   -- briefly.
   if (turret_inv.is_empty()) then
-    -- Check the vehicle's ammo slot.  The robotank vehicle ammo is not
-    -- otherwise used, but I still check it because when I shift-click to
-    -- put ammo into the robotank, the ammo slot gets populated first.
+    -- Check the vehicle's ammo slot.
     local car_inv = controller.entity.get_inventory(defines.inventory.car_ammo);
     if (not car_inv) then
       diag(1, "Failed to get car_ammo inventory!");
       return;
     end;
-    local ammo_type = get_insertable_item(car_inv, turret_inv);
-    if (not ammo_type) then
+
+    -- Is there ammo in an ammo slot that fits in the turret?
+    local ammo_item_name = get_insertable_item(car_inv, turret_inv);
+
+    if (not ammo_item_name) then
+      -- No ammo fits in the current turret.  Is there ammo
+      -- compatible with a different robotank turret entity?
+      for k, n in pairs(car_inv.get_contents()) do
+        -- I'm not sure what effect passing "turret" here has.
+        local ammo_type = game.item_prototypes[k].get_ammo_type("turret");
+        if (ammo_type ~= nil) then
+          local new_turret_name = ammo_category_to_turret_name[ammo_type.category];
+          if (new_turret_name ~= nil) then
+            diag(2, "Changing turret on vehicle " .. controller.entity.unit_number ..
+                    " from " .. controller.turret.name ..
+                    " to " .. new_turret_name ..
+                    " due to loading ammo " .. k ..
+                    " with category " .. ammo_type.category .. ".");
+
+            -- Remove the old turret.
+            if (not controller.turret.destroy()) then
+              diag(1, "WARNING: Failed to destroy turret while changing ammo type!");
+            end;
+
+            -- Add the new turret.
+            controller.turret = controller.entity.surface.create_entity{
+              name = new_turret_name,
+              position = controller.entity.position,
+              force = controller.entity.force};
+            if (not controller.turret) then
+              error("Failed to create turret (" .. new_turret_name ..
+                    ") for robotank!");
+            end;
+
+            -- Refresh the reference to its inventory.
+            turret_inv = controller.turret.get_inventory(defines.inventory.turret_ammo);
+            if (turret_inv == nil) then
+              -- This will leave us in a state where we have an attached
+              -- turret but can never fill it or change it...
+              diag(1, "Failed to get turret inventory after creating " ..
+                      " a new turret with name " .. new_turret_name .. "!");
+              return;
+            end;
+
+            -- Stop looping over the ammo slots.  Set ammo_item_name
+            -- so we will skip checking the trunk and go straight to
+            -- inserting the ammo into the new turret.
+            ammo_item_name = k;
+            break;
+          end;
+        end;
+      end; -- for loop over inventory contents
+    end;
+
+    if (not ammo_item_name) then
       -- Try the trunk.
       car_inv = controller.entity.get_inventory(defines.inventory.car_trunk);
       if (not car_inv) then
         diag(1, "Failed to get car_trunk inventory!");
         return;
       end;
-      ammo_type = get_insertable_item(car_inv, turret_inv);
+      ammo_item_name = get_insertable_item(car_inv, turret_inv);
+
+      -- Here, if 'ammo_item_name' is nil, we do not try changing the turret type.
+      -- The rationale is that, since a given tank can only fire one kind
+      -- of ammo as long as it has any, the player ought to explicitly
+      -- choose one.  They do that by loading ammo into a tank ammo
+      -- slot, as opposed to its trunk, which might get used as extra
+      -- storage of random stuff (perhaps including other kinds of ammo)
+      -- while in the field.
     end;
 
-    if (ammo_type) then
+    if (ammo_item_name) then
       -- Move up to 'ammo_move_magazine_count' ammo magazines into the turret.
-      local got = car_inv.remove{name=ammo_type, count=ammo_move_magazine_count};
+      local got = car_inv.remove{name=ammo_item_name, count=ammo_move_magazine_count};
       if (got < 1) then
         diag(1, "Failed to remove ammo from trunk!");
       else
-        local put = turret_inv.insert{name=ammo_type, count=got};
+        local put = turret_inv.insert{name=ammo_item_name, count=got};
         if (put < 1) then
           diag(1, "Failed to add ammo to turret!");
         else
-          diag(2, "Loaded " .. put .. " ammo magazines of type: " .. ammo_type);
+          diag(2, "Loaded " .. put ..
+               " ammo magazines of type " .. ammo_item_name ..
+               " into turret of unit " .. controller.entity.unit_number .. ".");
+
+          if (put < got) then
+            -- We could not fit all of the ammo into the turret.  Put the
+            -- remainder back into the car inventory.  This can happen if
+            -- 'ammo_move_magazine_count' is set to something larger than
+            -- one ammo stack.  I don't think that is possible with vanilla
+            -- ammo though.
+            local remainder = got - put;
+            local putback = car_inv.insert{name=ammo_item_name, count=remainder};
+            if (putback ~= remainder) then
+              -- I could spill the extras onto the ground, but this
+              -- should be impossible (since I just removed the items
+              -- from the inventory, so there is space).
+              diag(1, "WARNING: Tried to return " .. remainder ..
+                      " items of type " .. ammo_item_name ..
+                      " to unit " .. controller.entity.unit_number ..
+                      ", but only " .. putback ..
+                      " were returned, thus destroying " .. (remainder-putback) ..
+                      " items!");
+            else
+              diag(2, "Returned " .. remainder .. " items to the vehicle inventory.");
+            end;
+          end;
         end;
       end;
     end;
@@ -1437,7 +1542,8 @@ local function update_robotank_player_index_on_tick(tick, player_index, pi_contr
 
       -- Transfer non-fatal damage sustained by the turret to the tank.
       elseif (check_turret_damage) then
-        local damage = robotank_turret_max_health - controller.turret.health;
+        local max_health = game.entity_prototypes[controller.turret.name].max_health;
+        local damage = max_health - controller.turret.health;
         if (damage > 0) then
           local entity_health = controller.entity.health;
           if (entity_health <= damage) then
@@ -1451,8 +1557,13 @@ local function update_robotank_player_index_on_tick(tick, player_index, pi_contr
             -- tables.  So, let's just confirm that here.
             assert(pi_controllers[unit_number] == nil);
           else
+            if (log_all_damage) then
+              log("Transferring " .. damage ..
+                  " damage to vehicle " .. unit_number ..
+                  " from its turret.");
+            end;
             controller.entity.health = entity_health - damage;
-            controller.turret.health = robotank_turret_max_health;
+            controller.turret.health = max_health;
           end;
         end;
       end;
@@ -1484,6 +1595,31 @@ local function update_robotank_player_index_on_tick(tick, player_index, pi_contr
               diag(1, "Failed to teleport turret!");
             end;
           end;
+        end;
+
+        if (has_commander and controller.turret.active) then
+          -- Match vehicle turret orientation to the hidden turret.
+          --
+          -- This has to be done on every tick, since otherwise the vehicle
+          -- turret tries to return to its default position, causing
+          -- oscillation as the two effects fight.
+          --
+          -- I disable this when there is no commander because the logic
+          -- above causes this code to only run every 5 ticks with no
+          -- commander.  The turret is still active without a commander,
+          -- and will therefore can fire in a direction different from the
+          -- visible vehicle turret, but I accept that minor infidelity.
+          --
+          -- I would like to be able to detect when the hidden turret
+          -- "folds" itself due to inactivity, and in that case slave the
+          -- hidden turret to the visible turret, but I do not know of any
+          -- way to detect turret inactivity.
+          --
+          -- Around 10% of run time is spent doing this on a large map with
+          -- 40 tanks and a commander.
+          controller.entity.relative_turret_orientation =
+            normalize_orientation(controller.turret.orientation -
+                                  controller.entity.orientation);
         end;
 
         -- Replenish turret ammo.
@@ -1555,7 +1691,10 @@ script.on_event(defines.events.on_tick, function(e)
   end;
 
   -- Possibly check invariants.
-  if ((e.tick % 60) == 0) then
+  if ((e.tick % 600) == 0) then
+    -- This is not currently very expensive to run.  Even if run on
+    -- every tick, the cost of the mod merely doubles.  But I will
+    -- run it infrequently anyway.
     check_or_fix_invariants();
   end;
 
@@ -1641,7 +1780,7 @@ script.on_event({defines.events.on_entity_died},
         diag(2, "But the vehicle or player was not in my tables.");
       end;
 
-    elseif (e.entity.name == "robotank-turret-entity") then
+    elseif (is_robotank_turret_entity_name(e.entity.name)) then
       -- Normally this should not happen because the turret has 1000 HP
       -- and any damage it takes is quickly transferred to the tank, with
       -- the turret's health being then restored to full.  But it is
@@ -1737,6 +1876,31 @@ end;
 
 script.on_event({defines.events.on_player_driving_changed_state},
   on_player_driving_changed_state);
+
+
+-- Experimental addition so I can see damage effects.
+if (log_all_damage) then
+  script.on_event({defines.events.on_entity_damaged},
+    function(event)
+      if (event.entity ~= nil) then
+        local attacker = "nil";
+        if (event.cause ~= nil and event.cause.unit_number ~= nil) then
+          attacker = "{num=" .. event.cause.unit_number ..
+                     " name=" .. event.cause.name .. "}";
+        end;
+        -- The unit number is nil for things like trees.  'tostring'
+        -- allows printing 'nil'.
+        log("Entity num=" .. tostring(event.entity.unit_number) ..
+            " type=" .. event.entity.type ..
+            " name=" .. event.entity.name ..
+            " took " .. event.final_damage_amount ..
+            " damage of type " .. event.damage_type.name ..
+            " from attacker=" .. attacker ..
+            ".");
+      end;
+    end
+  );
+end;
 
 
 ----------------------------- Test code ------------------------------

@@ -30,7 +30,7 @@ function entity_info(e)
   };
 end;
 
--- "Orientation" in Factor is a floating-point number in [0,1]
+-- "Orientation" in Factorio is a floating-point number in [0,1]
 -- where 0 is North, 0.25 is East, 0.5 is South, and 0.75 is West.
 -- Convert that to a unit vector where +x is East and +y is South.
 function orientation_to_unit_vector(orientation)
