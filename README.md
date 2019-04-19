@@ -29,7 +29,7 @@ RoboTank(s).  Where you put the RoboTanks in relation to the commander
 matters, as they will remember it as their formation position.
 Add fuel and ammo (bullets or cannon shells) to the RoboTanks.
 
-Finally, put the RoboTank Transmitter into the inventory of the commander
+Finally, put the RoboTank Transmitter into the inventory of the commander tank
 and start driving it.  The RoboTanks will drive themselves to stay in
 formation and will automatically fire at enemy units and structures.
 
@@ -71,8 +71,8 @@ Limitations
 ===========
 The vanilla cannon shells do friendly fire damage.  The RoboTank firing
 logic is oblivious to this, and will therefore damage other squad members
-while trying to hit nearby enemies with cannon shells.  You may want to
-install [SmartCannonShells](https://mods.factorio.com/mods/smcpeak/SmartCannonShells)
+while trying to hit nearby enemies with cannon shells.  You will probably
+want to install [SmartCannonShells](https://mods.factorio.com/mods/smcpeak/SmartCannonShells)
 alongside RoboTank if you use cannon shells in RoboTanks.
 
 RoboTank collision avoidance is far from perfect.  They will run into
@@ -95,6 +95,16 @@ happens because, internally, it has been moved to a hidden turret entity
 that does the firing.  You get the ammo back when you pick up the tank.
 
 RoboTanks cannot fire flamethrower ammo.
+
+The RoboTank turrets do not return to the forward position when disengaged
+with the enemy like the normal tank turret does.  Instead, they continue to
+point in the direction they last fired.  That is because they are reflecting
+the aim direction of the underlying hidden turret entity.
+
+Additionally, when there is no commander, the RoboTank turrets visually return
+to the forward position and stay there, not appearing to aim at their targets.
+When a commander is created, the link between the visible turret and hidden
+turret aim direction is re-established.
 
 The new worm and spitter mechanics in Factorio 0.17 cause a balance issue
 because they are unable to properly lead RoboTanks due to the fact that
