@@ -118,6 +118,8 @@ Links
 =====
 Factorio mod portal page: https://mods.factorio.com/mods/smcpeak/RoboTank
 
+Github repo: https://github.com/smcpeak/factorio-robotank
+
 SmartCannonShells mod: https://mods.factorio.com/mods/smcpeak/SmartCannonShells
 
 Demo video on YouTube: https://www.youtube.com/watch?v=M64LyVkl6Ac
