@@ -75,6 +75,12 @@ while trying to hit nearby enemies with cannon shells.  You will probably
 want to install [SmartCannonShells](https://mods.factorio.com/mods/smcpeak/SmartCannonShells)
 alongside RoboTank if you use cannon shells in RoboTanks.
 
+In order to make vanilla cannon shell ammo somewhat usable,
+RoboTanks firing cannon shells have a minimum range of 5 units, and
+their projectiles start 5 units away.  (Otherwise, the shell fired by
+the hidden turret would strike the RoboTank hull.)  For simplicity,
+this minimum range is active even when using SmartCannonShells.
+
 RoboTank collision avoidance is far from perfect.  They will run into
 each other and/or become stuck if you maneuver the commander too
 aggressively.
