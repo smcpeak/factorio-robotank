@@ -72,14 +72,14 @@ Limitations
 The vanilla cannon shells do friendly fire damage.  The RoboTank firing
 logic is oblivious to this, and will therefore damage other squad members
 while trying to hit nearby enemies with cannon shells.  You will probably
-want to install [SmartCannonShells](https://mods.factorio.com/mods/smcpeak/SmartCannonShells)
+want to install [Smart Cannon Shells](https://mods.factorio.com/mods/smcpeak/SmartCannonShells)
 alongside RoboTank if you use cannon shells in RoboTanks.
 
 In order to make vanilla cannon shell ammo somewhat usable,
 RoboTanks firing cannon shells have a minimum range of 5 units, and
 their projectiles start 5 units away.  (Otherwise, the shell fired by
 the hidden turret would strike the RoboTank hull.)  For simplicity,
-this minimum range is active even when using SmartCannonShells.
+this minimum range is active even when using Smart Cannon Shells.
 
 RoboTank collision avoidance is far from perfect.  They will run into
 each other and/or become stuck if you maneuver the commander too
@@ -137,6 +137,6 @@ Factorio mod portal page: https://mods.factorio.com/mods/smcpeak/RoboTank
 
 Github repo: https://github.com/smcpeak/factorio-robotank
 
-SmartCannonShells mod: https://mods.factorio.com/mods/smcpeak/SmartCannonShells
+Smart Cannon Shells mod: https://mods.factorio.com/mods/smcpeak/SmartCannonShells
 
 Demo video on YouTube: https://www.youtube.com/watch?v=M64LyVkl6Ac
