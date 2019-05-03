@@ -1862,6 +1862,17 @@ local function on_player_driving_changed_state(event)
 
       -- Re-activate any disabled turrets.
       local pi_controllers = global.player_index_to_controllers[event.player_index];
+      if (pi_controllers == nil) then
+        -- I do not know how this happens.  'character' is obtained by
+        -- lookup in game.players[].  But if its player index matched
+        -- event.player_index, then find_or_create should have already
+        -- populated the PITC table.  And yet I have a bug report showing
+        -- this can happen.  So I guess just ignore the event?
+        diag(1, "pi_controllers is nil? " ..
+             " event.player_index=" .. event.player_index ..
+             " char_pi=" .. player_index_of_entity(character));
+        return;
+      end;
       for unit_number, controller in pairs(pi_controllers) do
         if (controller.turret ~= nil and
             controller.turret.active == false and
