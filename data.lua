@@ -91,7 +91,7 @@ robotank_item.order = "x[robotank]";
 robotank_item.icons = {
   {
     icon = "__base__/graphics/icons/tank.png",
-    icon_size = 32,
+    icon_size = 64,
     tint = robotank_tint,
   },
 };
