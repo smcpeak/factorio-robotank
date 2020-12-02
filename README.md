@@ -16,7 +16,7 @@ list available from the Factorio main menu, initially enabled.
 
 Usage
 =====
-First unlock the RoboTank technology.  It requires Robotics, Tanks,
+First unlock the RoboTank technology.  It requires Robotics, Tank,
 and Advanced Electronics 2 ("Blue Circuits") to be researched first.
 
 Then create a RoboTank Transmitter and at least one RoboTank.  Both are

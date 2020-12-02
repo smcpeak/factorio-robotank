@@ -32,13 +32,13 @@ local robotank_technology = {
   },
   icon = "__RoboTank__/graphics/technology/robotank-technology.png",
   icon_size = 128,
-  order = "e-c-c-2",                   -- Right after "tanks".
+  order = "e-c-c-2",                   -- Right after "tank".
   prerequisites = {
     "advanced-electronics-2",          -- Processing unit.
     "robotics",                        -- Flying robot frame.
-    "tanks"                            -- Ordinary tank.
+    "tank"                             -- Ordinary tank.
   },
-  unit = data.raw["technology"].tanks.unit,   -- Same cost as tanks.
+  unit = data.raw["technology"].tank.unit,   -- Same cost as regular tank.
 };
 
 -- Recipe to allow one to create the transmitter that controls robotanks.

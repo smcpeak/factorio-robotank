@@ -1,10 +1,10 @@
 {
     "name": "RoboTank",
-    "version": "1.2.0",
+    "version": "1.3.0",
     "title": "RoboTank",
     "author": "Scott McPeak",
     "homepage": "https://github.com/smcpeak/factorio-robotank",
-    "factorio_version": "0.18",
-    "dependencies": ["base >= 0.18"],
+    "factorio_version": "1.1",
+    "dependencies": ["base >= 1.1"],
     "description": "RoboTank is a tank that drives and shoots automatically, following the lead of a manually piloted commander vehicle."
 }
