@@ -37,6 +37,11 @@ If you remove the transmitter from the commander, it ceases to be the
 commander.  The RoboTanks will halt and wait for another commander (tank
 with transmitter in it) to come into existence.
 
+Any type of vehicle, including modded vehicles, can act as the
+commander.  However, in practice, it works best if the commander vehicle
+behaves similarly to the vanilla tank since the RoboTanks then have an
+easier time matching the commander's movements.
+
 Features
 ========
 RoboTanks can fire either bullets or cannon shells, depending on
