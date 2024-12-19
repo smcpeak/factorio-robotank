@@ -668,9 +668,9 @@ end;
 -- added to the destination inventory.  If there are more than one,
 -- returns one arbitrarily.  Otherwise return nil.
 local function get_insertable_item(source, dest)
-  for name, _ in pairs(source.get_contents()) do
-    if (dest.can_insert(name)) then
-      return name;
+  for _, item_and_count in ipairs(source.get_contents()) do
+    if (dest.can_insert(item_and_count)) then
+      return item_and_count.name;
     end;
   end;
   return nil;
@@ -705,7 +705,7 @@ local function maybe_load_robotank_turret_ammo(controller)
       -- compatible with a different robotank turret entity?
       for k, n in pairs(car_inv.get_contents()) do
         -- I'm not sure what effect passing "turret" here has.
-        local ammo_type = game.item_prototypes[k].get_ammo_type("turret");
+        local ammo_type = prototypes.item[k].get_ammo_type("turret");
         if (ammo_type ~= nil) then
           local new_turret_name = ammo_category_to_turret_name[ammo_type.category];
           if (new_turret_name ~= nil) then
@@ -1555,7 +1555,7 @@ local function update_robotank_player_index_on_tick(tick, player_index, pi_contr
 
       -- Transfer non-fatal damage sustained by the turret to the tank.
       elseif (check_turret_damage) then
-        local max_health = game.entity_prototypes[controller.turret.name].max_health;
+        local max_health = prototypes.entity[controller.turret.name].get_max_health();
         local damage = max_health - controller.turret.health;
         if (damage > 0) then
           local entity_health = controller.entity.health;
@@ -1736,7 +1736,7 @@ script.on_configuration_changed(
 -- On built entity: add to tables.
 script.on_event({defines.events.on_built_entity, defines.events.on_robot_built_entity},
   function(e)
-    local ent = e.created_entity;
+    local ent = e.entity;
     if (ent.type == "car") then
       add_entity(ent);
     end;
