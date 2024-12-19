@@ -14,6 +14,7 @@ local must_initialize_loaded_storage_data = true;
 local must_rescan_world = true;
 
 -- How much to log, from among:
+--
 --   0: Nothing.
 --   1: Only things that indicate a serious problem.  These suggest a
 --      bug in the RoboTank mod, but are recoverable.
@@ -22,9 +23,10 @@ local must_rescan_world = true;
 --      about being stuck, loading ammo, etc.
 --   3: Changes to internal data structures.
 --   4: Details of algorithms.
--- The default value here is overwritten by a configuration setting
--- during initialization.
-local diagnostic_verbosity = 2;
+--
+-- The initial value here is overwritten by a configuration setting
+-- during initialization, but takes effect until that happens.
+local diagnostic_verbosity = 4;    -- TODO: Change to 1.
 
 -- Debug option to log all damage taken.
 local log_all_damage = false;
