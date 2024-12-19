@@ -23,11 +23,11 @@ local robotank_technology = {
   effects = {
     {
       type = "unlock-recipe",
-      recipe = "robotank-recipe",
+      recipe = "robotank",
     },
     {
       type = "unlock-recipe",
-      recipe = "robotank-transmitter-recipe",
+      recipe = "robotank-transmitter",
     },
   },
   icon = "__RoboTank__/graphics/technology/robotank-technology.png",
@@ -44,10 +44,7 @@ local robotank_technology = {
 -- Recipe to allow one to create the transmitter that controls robotanks.
 local transmitter_recipe = {
   type = "recipe",
-
-  -- TODO: Remove the "-recipe" suffix here and elsewhere.
-  name = "robotank-transmitter-recipe",
-
+  name = "robotank-transmitter",
   enabled = false,
 
   ingredients = {
@@ -104,7 +101,7 @@ local transmitter_item = {
 -- Recipe to allow one to create the robotank.
 local robotank_recipe = {
   type = "recipe",
-  name = "robotank-recipe",       -- TODO: Remove "-recipe".
+  name = "robotank",
   enabled = false,
   energy_required = 2,            -- 2 seconds to build.
   ingredients = {
