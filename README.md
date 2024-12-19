@@ -7,8 +7,8 @@ RoboTanks that will stay together, attempting to maintain formation.
 This is meant as an alternative to the somewhat monotonous "turret
 creep" tactic.
 
-Installation
-============
+Manual Installation
+===================
 Copy the release zip file (RoboTank_X.Y.Z.zip) into the "mods" subfolder
 of the [User Data Directory](https://wiki.factorio.com/Application_directory#User_Data_directory).
 Then start (or restart) Factorio.  It should then appear in the Mods
