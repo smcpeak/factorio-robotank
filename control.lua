@@ -26,7 +26,7 @@ local must_rescan_world = true;
 --
 -- The initial value here is overwritten by a configuration setting
 -- during initialization, but takes effect until that happens.
-local diagnostic_verbosity = 4;    -- TODO: Change to 1.
+local diagnostic_verbosity = 1;
 
 -- Debug option to log all damage taken.
 local log_all_damage = false;
