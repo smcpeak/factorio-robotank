@@ -122,6 +122,10 @@ to the forward position and stay there, not appearing to aim at their targets.
 When a commander is created, the link between the visible turret and hidden
 turret aim direction is re-established.
 
+I have made no attempt to migrate RoboTank entities from the 1.x series.
+I don't know what will happen if you load a world from Factorio 1.x that
+had RoboTank installed into Factorio 2.x.
+
 Known Issues with Other Mods
 ============================
 [SchallTankPlatoon](https://mods.factorio.com/mod/SchallTankPlatoon) introduces

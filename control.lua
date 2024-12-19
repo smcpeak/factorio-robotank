@@ -420,104 +420,12 @@ end;
 local function initialize_loaded_storage_data()
   diag(3, "Loaded data_version: " .. serpent.line(storage.data_version));
 
-  if (storage.data_version == 1) then
-    diag(2, "RoboTank: Upgrading data_version 1 to 2.");
+  -- I have removed all of the upgrade steps related to versions before
+  -- Factorio 2.0 since I don't want to spend time testing them.  I
+  -- don't know, and don't really care, what will happen if one tries to
+  -- load a world containing pre-2.0 RoboTank.
 
-    -- I renamed "force_to_vehicles" to "force_to_controllers".
-    storage.force_to_controllers = storage.force_to_vehicles;
-    storage.force_to_vehicles = nil;
-
-    -- I also renamed "nearby_vehicles" to "nearby_controllers".
-    if (storage.force_to_controllers ~= nil) then
-      for _, force_controllers in pairs(storage.force_to_controllers) do
-        for _, controller in pairs(force_controllers) do
-          controller.nearby_controllers = controller.nearby_vehicles;
-          controller.nearby_vehicles = nil;
-        end;
-      end;
-    end;
-    storage.data_version = 2;
-  end;
-
-  if (storage.data_version == 2) then
-    diag(2, "RoboTank: Upgrading data_version 2 to 3.");
-
-    -- I renamed "vehicle" to "entity".
-    if (storage.force_to_controllers ~= nil) then
-      for _, force_controllers in pairs(storage.force_to_controllers) do
-        for _, controller in pairs(force_controllers) do
-          controller.entity = controller.vehicle;
-          controller.vehicle = nil;
-        end;
-      end;
-    end;
-    storage.data_version = 3;
-  end;
-
-  if (storage.data_version == 3) then
-    diag(2, "RoboTank: Upgrading data_version 3 to 4.");
-
-    -- I removed "nearby_controllers", instead storing that outside
-    -- of 'storage'.
-    if (storage.force_to_controllers ~= nil) then
-      for _, force_controllers in pairs(storage.force_to_controllers) do
-        for _, controller in pairs(force_controllers) do
-          controller.nearby_controllers = nil;
-        end;
-      end;
-    end;
-    storage.data_version = 4;
-  end;
-
-  if (storage.data_version == 4) then
-    diag(2, "RoboTank: Upgrading data_version 4 to 5.");
-
-    -- I added 'player_index_to_controllers'.
-    storage.player_index_to_controllers = {};
-    for force, force_controllers in pairs(storage.force_to_controllers) do
-      for unit_number, controller in pairs(force_controllers) do
-        local entity = controller.entity;
-        if (entity.valid) then
-          local player_index = player_index_of_entity(entity);
-          if (player_index < 0) then
-            -- I do not know if this can happen.
-            diag(3, "unit " .. unit_number .. " has no player index, removing it");
-            force_controllers[unit_number] = nil;
-          else
-            storage.player_index_to_controllers[player_index] =
-              storage.player_index_to_controllers[player_index] or {}
-            storage.player_index_to_controllers[player_index][unit_number] = controller;
-            diag(3, "added unit " .. unit_number .. " to player_index " .. player_index);
-          end;
-        else
-          -- One way this happens is if the loaded map was saved with
-          -- multiple players in it, but is then loaded with only one
-          -- player.
-          diag(3, "unit " .. unit_number .. " is invalid, removing it");
-          force_controllers[unit_number] = nil;
-        end;
-      end;
-    end;
-
-    -- I replaced 'force_to_commander_controller' with
-    -- 'player_index_to_commander_controller'.  I will simply remove
-    -- the old map and initialize the new one to empty, in anticipation
-    -- that commander refresh will populate it.
-    storage.force_to_commander_controller = nil;
-    storage.player_index_to_commander_controller = {};
-    storage.data_version = 5;
-  end;
-
-  if (storage.data_version == 5) then
-    diag(2, "RoboTank: Upgrading data_version 5 to 6.");
-
-    -- For the moment, there is nothing to do.  5 was the last version
-    -- for Factorio 1.x, and 6 is the first for Factorio 2.x, so I am
-    -- creating this as a placeholder for that transition.
-
-    storage.data_version = 6;
-  end;
-
+  -- The first version that supports Factorio 2.0 has version 6.
   storage.data_version = 6;
 
   if (storage.player_index_to_commander_controller == nil) then
