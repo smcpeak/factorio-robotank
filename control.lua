@@ -35,6 +35,41 @@ local log_all_damage = false;
 local ammo_check_period_ticks = 0;
 
 
+--[[
+
+  Handling of Surfaces
+  --------------------
+
+  Entities can be on different surfaces.  The intent is that only
+  entities on the same surface interact.
+
+  For efficiency, one might be tempted to partition all data by surface.
+  However, that runs into potential trouble when entities move between
+  surfaces.  When player characters move, there is an event
+  (`on_player_changed_surface`), but it's not clear to me that the event
+  always fires when mods do the moving.  Furthermore, mods can move
+  vehicles between surfaces, and there is no event for that.  Thus, I do
+  not see a clear, reliable strategy for maintaining a partitioning by
+  surface.
+
+  Consequently, this mod keeps all the data in one structure, but checks
+  the surface in a few places:
+
+  * When selecting the commander vehicle for a player, the commander
+    vehicle must be on the same surface as the player.  (Based on the
+    API docs, the player always has a surface, even if they do not have
+    a character.)  When the player changes surfaces, the commander is
+    adjusted.
+
+  * When a RoboTank is considering running its driving algorithm, it
+    skips doing so if the commander is on a different surface.
+
+  * When a RoboTank is performing collision avoidance, it ignores
+    objects on different surfaces.
+
+--]]
+
+
 -- Structure of 'storage' is {
 --   -- Data version number, bumped when I make a change that requires
 --   -- special handling.
@@ -58,7 +93,8 @@ local ammo_check_period_ticks = 0;
 --   player_index_to_controllers = {};
 --
 --   -- Map from player_index to its commander vehicle controller, if
---   -- there is such a commander.
+--   -- there is such a commander.  The commander is always on the same
+--   -- surface as the player.
 --   player_index_to_commander_controller = {};
 -- };
 
@@ -371,6 +407,7 @@ local function add_entity(e)
           " name=" .. e.name ..
           " player_index=" .. player_index_of_entity(e) ..
           " pos=(" .. e.position.x .. "," .. e.position.y .. ")" ..
+          " surface=" .. e.surface.name ..
           " force=" .. force_name);
 
   return controller;
@@ -503,37 +540,41 @@ end;
 -- structures but are not.  They are then either added to my tables
 -- or deleted from the world.
 find_unassociated_entities = function()
-  -- Scan the surface for all of our hidden turrets so that later we
-  -- can get rid of any not associated with a vehicle.
-  local turrets = {};
-  for _, t in ipairs(game.surfaces[1].find_entities_filtered{name=robotank_turret_entity_name_array()}) do
-    turrets[t.unit_number] = t;
-  end;
+  for _, surface in pairs(game.surfaces) do
+    diag(4, "find_unassociated_entities: scanning surface: " .. surface.name);
 
-  -- Add all vehicles to 'force_to_controllers' table.
-  for _, v in ipairs(game.surfaces[1].find_entities_filtered{type = "car"}) do
-    found_an_entity(v, turrets);
-  end;
+    -- Scan the surface for all of our hidden turrets so that later we
+    -- can get rid of any not associated with a vehicle.
+    local turrets = {};
+    for _, t in ipairs(surface.find_entities_filtered{name=robotank_turret_entity_name_array()}) do
+      turrets[t.unit_number] = t;
+    end;
 
-  -- And player characters, mainly so we can avoid running them over
-  -- when driving the robotanks.
-  for _, character in ipairs(game.surfaces[1].find_entities_filtered{name = "character"}) do
-    found_an_entity(character, turrets);
-  end;
+    -- Add all vehicles to 'force_to_controllers' table.
+    for _, v in ipairs(surface.find_entities_filtered{type = "car"}) do
+      found_an_entity(v, turrets);
+    end;
 
-  -- Destroy any unassociated turrets.  There should never be any, but
-  -- this will catch things that might be left behind due to a bug in
-  -- my code.
-  for unit_number, t in pairs(turrets) do
-    diag(1, "WARNING: Should not happen: destroying unassociated turret " .. unit_number);
-    t.destroy();
+    -- And player characters, mainly so we can avoid running them over
+    -- when driving the robotanks.
+    for _, character in ipairs(surface.find_entities_filtered{name = "character"}) do
+      found_an_entity(character, turrets);
+    end;
+
+    -- Destroy any unassociated turrets.  There should never be any, but
+    -- this will catch things that might be left behind due to a bug in
+    -- my code.
+    for unit_number, t in pairs(turrets) do
+      diag(1, "WARNING: Should not happen: destroying unassociated turret " .. unit_number);
+      t.destroy();
+    end;
   end;
 end;
 
 
--- Find the vehicle controller among 'pi_controllers' that is commanding
--- them, if any.
-local function find_commander_controller(pi_controllers)
+-- Find the vehicle controller among `pi_controllers` that is commanding
+-- them, if any.  It must be on `surface`.
+local function find_commander_controller(pi_controllers, surface)
   for unit_number, controller in pairs(pi_controllers) do
     local v = controller.entity;
 
@@ -552,6 +593,9 @@ local function find_commander_controller(pi_controllers)
       -- would suffice, but in fact the quick bar counts as the "trunk"
       -- for a player!  (As of Factorio 0.17, that is probably no longer
       -- true.)
+
+    elseif (v.surface ~= surface) then
+      -- Not on the right surface.
 
     elseif (v.name == "robotank") then
       -- A robotank cannot be a commander.
@@ -812,17 +856,19 @@ local function collision_avoidance(tick, force_controllers, unit_number, control
   local v_velocity = vehicle_velocity(v);
   local v_orientation = v.orientation;
   local v_speed = v.speed;
+  local v_surface = v.surface;
 
   -- PERFORMANCE TESTING MODE:
   -- When I am doing performance testing, I want to disable the nearby
   -- controller refresh because it causes the per-tick time to have a
-  -- lot of noise.  I also want all controllers to be included so that
-  -- too is eliminated as a source of measurement variability.
+  -- lot of noise.  I also want all controllers on the same surface to
+  -- be included so that the set of nearby entities is also eliminated
+  -- as a source of measurement variability.
   --[[
   if (unit_number_to_nearby_controllers[unit_number] == nil) then
     unit_number_to_nearby_controllers[unit_number] = {};
     for _, other in pairs(force_controllers) do
-      if (other.entity ~= v) then
+      if (other.entity ~= v and other.entity.surface == v_surface) then
         table.insert(unit_number_to_nearby_controllers[unit_number], other);
       end;
     end;
@@ -836,7 +882,7 @@ local function collision_avoidance(tick, force_controllers, unit_number, control
   if (unit_number_to_nearby_controllers[unit_number] == nil or (tick % 60 == 0)) then
     unit_number_to_nearby_controllers[unit_number] = {};
     for _, other in pairs(force_controllers) do
-      if (other.entity ~= v) then
+      if (other.entity ~= v and other.entity.surface == v_surface) then
         -- The other entity is considered nearby if it is or will be
         -- within a certain, relatively large, distance before we next
         -- refresh the list of nearby entities.
@@ -1013,6 +1059,12 @@ local function drive_vehicle(tick, force_controllers, commander_vehicle,
       end;
     end;
 
+    return;
+  end;
+
+  -- Do not drive RoboTanks that are on a different surface from the
+  -- commander.
+  if (v.surface ~= commander_vehicle.surface) then
     return;
   end;
 
@@ -1280,11 +1332,13 @@ end;
 
 -- Find the current commander of 'player_index' and deal with changes.
 local function refresh_commander(player_index, pi_controllers)
+  local surface = game.players[player_index].surface;
+
   -- Get the old commander so I can detect changes.
   local old_cc = storage.player_index_to_commander_controller[player_index];
 
   -- Find the new commander.
-  local new_cc = find_commander_controller(pi_controllers);
+  local new_cc = find_commander_controller(pi_controllers, surface);
 
   if (new_cc ~= old_cc) then
     storage.player_index_to_commander_controller[player_index] = new_cc;

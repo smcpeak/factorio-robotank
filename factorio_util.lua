@@ -23,6 +23,7 @@ function entity_info(e)
     active = e.active,
     health = e.health,
     position = e.position,
+    surface = e.surface.name,
     --bounding_box = e.bounding_box,
     valid = e.valid,
     force = string_or_name_of(e.force),
