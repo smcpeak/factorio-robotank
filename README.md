@@ -105,6 +105,11 @@ A portion of the ammo placed in a RoboTank seems to disappear.  This
 happens because, internally, it has been moved to a hidden turret entity
 that does the firing.  You get the ammo back when you pick up the tank.
 
+When a RoboTank exhausts the ammo stack it is using internally, an alert
+is shown saying a turret ran out of ammo, even if it successfully
+reloaded from the visible inventory and hence is not actually out of
+ammo.  I'm not sure how to fix that.
+
 RoboTanks cannot fire flamethrower ammo.
 
 The RoboTank turrets do not return to the forward position when disengaged
