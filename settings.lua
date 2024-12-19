@@ -37,15 +37,18 @@ data:extend({
     type = "int-setting",
     name = "robotank-diagnostic-verbosity",
     setting_type = "runtime-global",
-    default_value = 2,
+    default_value = 1,
     minimum_value = 0,
     maximum_value = 4,
   },
-  
+
   -- Color of a RoboTank.
   --
   -- Since there is no setting type for a color, I have to make this
   -- three different settings.
+  --
+  -- TODO: There now is a color setting type, so I should use that.
+  --
   {
     type = "double-setting",
     name = "robotank-color-red",
