@@ -122,15 +122,29 @@ riding_direction_string_table = {
   [defines.riding.direction.right] = "right",
 };
 
--- Copy all items from 'source' to 'dest', returning the total number
--- of items copied.  This duplicates the items, so should only be done
--- when the source inventory is about to be destroyed.
+-- Copy all items from `source` to `dest` LuaInventory, returning the
+-- total number of items copied.  This duplicates the items, so should
+-- only be done when the source inventory is about to be destroyed.
+--
+-- Note: It is often better to use `LuaItemStack.swap_stack` on empty
+-- stacks (to avoid duplication issues, etc.), but the way this function
+-- is called, `dest` is the `buffer` element of the event object for
+-- `on_player_mined_entity`, and that inventory does not have any empty
+-- stacks initially.
+--
 function copy_inventory_from_to(source, dest)
-  local ret = 0
-  for name, count in pairs(source.get_contents()) do
-    ret = ret + dest.insert({name=name, count=count});
+  local num_items_copied = 0;
+
+  -- Copy slot by slot in order to preserve quality, freshness, etc.
+  for source_slot_num = 1, #source do
+    local source_stack = source[source_slot_num];
+    if (source_stack.count > 0) then
+      local copy_count = dest.insert(source_stack);
+      num_items_copied = num_items_copied + copy_count;
+    end;
   end;
-  return ret;
+
+  return num_items_copied;
 end;
 
 

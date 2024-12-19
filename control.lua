@@ -1757,7 +1757,6 @@ script.on_event({defines.events.on_player_mined_entity, defines.events.on_robot_
           -- the turret entity so it is not lost.
           local turret_inv = controller.turret.get_inventory(defines.inventory.turret_ammo);
           if (turret_inv) then
-            -- TODO: Use swap instead.
             local res = copy_inventory_from_to(turret_inv, e.buffer);
             diag(2, "Grabbed " .. res .. " items from the turret before it was destroyed.");
           end;
