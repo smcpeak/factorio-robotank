@@ -274,6 +274,9 @@ if (not show_hidden_turret) then
   robotank_turret_entity.prepared_animation  = blank_layers;
   robotank_turret_entity.preparing_animation = blank_layers;
 
+  -- Do not show the turret base.
+  robotank_turret_entity.graphics_set.base_visualisation.animation = blank_layers;
+
 else
   -- When showing the turret, push the RoboTank into a lower render
   -- layer.  This is the same layer as biter corpses, so it does not
