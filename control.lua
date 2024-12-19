@@ -34,10 +34,6 @@ local log_all_damage = false;
 -- Ticks between ammo checks.  Set during initialization.
 local ammo_check_period_ticks = 0;
 
--- Number of ammo magazines to load into a turret when it is out.
--- Set during initialization.
-local ammo_move_magazine_count = 0;
-
 
 -- Structure of 'storage' is {
 --   -- Data version number, bumped when I make a change that requires
@@ -170,7 +166,6 @@ end;
 local function read_configuration_settings()
   diag(3, "read_configuration_settings started");
   ammo_check_period_ticks = settings.global["robotank-ammo-check-period-ticks"].value;
-  ammo_move_magazine_count = settings.global["robotank-ammo-move-magazine-count"].value;
   diagnostic_verbosity = settings.global["robotank-diagnostic-verbosity"].value;
   diag(3, "read_configuration_settings finished");
 end;

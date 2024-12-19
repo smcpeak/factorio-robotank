@@ -48,7 +48,6 @@ defines.riding.direction.straight = 12;
 settings = {};
 settings.global = {};
 settings.global["robotank-ammo-check-period-ticks"] = { value=1 };
-settings.global["robotank-ammo-move-magazine-count"] = { value=1 };
 settings.global["robotank-diagnostic-verbosity"] = { value=2 };
 
 -- EOF
