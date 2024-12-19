@@ -5,9 +5,9 @@ require "lua_util"         -- add_vec, etc.
 require "factorio_util"    -- vehicle_velocity, etc.
 
 
--- True when we need to examine the global data just loaded to
+-- True when we need to examine the storage data just loaded to
 -- upgrade or validate it.
-local must_initialize_loaded_global_data = true;
+local must_initialize_loaded_storage_data = true;
 
 -- True when, on the next tick, we need to rescan the world to check
 -- for consistency with our data structures.
@@ -37,10 +37,10 @@ local ammo_check_period_ticks = 0;
 local ammo_move_magazine_count = 0;
 
 
--- Structure of 'global' is {
+-- Structure of 'storage' is {
 --   -- Data version number, bumped when I make a change that requires
 --   -- special handling.
---   data_version = 5;
+--   data_version = 6;
 --
 --   -- Map from force to its controllers.  Each force's controllers
 --   -- are a map from unit_number to its entity_controller object.
@@ -71,7 +71,7 @@ local function new_entity_controller(e)
   return {
     -- Reference to the Factorio entity we are controlling.  This is
     -- either a vehicle (type=="car"), which itself might be a robotank
-    -- (name=="robotank-entity"), or a player character (name=="player").
+    -- (name=="robotank-entity"), or a player character (name=="character").
     entity = e,
 
     -- Associated turret entity that does the shooting.  It is always
@@ -122,7 +122,7 @@ end;
 -- collision avoidance.  When the entry for a given unit number is nil,
 -- it needs to be recomputed.
 --
--- This data is *not* stored in 'global' because it would take a lot of
+-- This data is *not* stored in 'storage' because it would take a lot of
 -- space in the save file.  The data is inherently quadratic in size,
 -- and the way Factorio serializes mod data adds another factor, such
 -- that the serialized size is cubic in the number of tanks.  That in
@@ -199,7 +199,7 @@ local function player_index_of_entity(e)
     else
       return e.last_user.index;
     end;
-  elseif (e.type == 'player') then
+  elseif (e.type == 'character') then
     -- Character.
     if (e.player ~= nil) then
       return e.player.index;
@@ -217,7 +217,7 @@ end;
 local function check_invariants()
   -- Check that everything in 'player_index_to_controllers' is also
   -- in 'force_to_controllers'.
-  for player_index, pi_controllers in pairs(global.player_index_to_controllers) do
+  for player_index, pi_controllers in pairs(storage.player_index_to_controllers) do
     for unit_number, controller in pairs(pi_controllers) do
       local entity = controller.entity;
       local entity_pi = player_index_of_entity(entity);
@@ -230,7 +230,7 @@ local function check_invariants()
       end;
 
       local force = force_of_entity(entity);
-      if (global.force_to_controllers[force][unit_number] ~= controller) then
+      if (storage.force_to_controllers[force][unit_number] ~= controller) then
         diag(1, "WARNING: Controller for entity " .. entity.unit_number ..
                 ", with force " .. force ..
                 ", was not found in its force table.");
@@ -240,7 +240,7 @@ local function check_invariants()
   end;
 
   -- Check the maps in the opposite direction.
-  for force, force_controllers in pairs(global.force_to_controllers) do
+  for force, force_controllers in pairs(storage.force_to_controllers) do
     for unit_number, controller in pairs(force_controllers) do
       local entity = controller.entity;
       local entity_force = force_of_entity(entity);
@@ -264,7 +264,7 @@ local function check_invariants()
                 " does not have a player index.");
         return false;
       end;
-      if (global.player_index_to_controllers[player_index][unit_number] ~= controller) then
+      if (storage.player_index_to_controllers[player_index][unit_number] ~= controller) then
         diag(1, "WARNING: Controller for entity " .. entity.unit_number ..
                 ", with player index " .. player_index ..
                 ", was not found in its PI table.");
@@ -277,17 +277,17 @@ local function check_invariants()
 end;
 
 
--- Clear the global data structures and rebuild them from the world.
+-- Clear the storage data structures and rebuild them from the world.
 -- This is done in response to discovering a broken invariant as a
 -- method of fault tolerance.
-local function reset_global_data()
-  diag(1, "RoboTank: resetting global data");
+local function reset_storage_data()
+  diag(1, "RoboTank: resetting storage data");
   must_rescan_world = false;
 
   -- Clear the data structures so we can rebuild them.
-  global.force_to_controllers = {};
-  global.player_index_to_controllers = {};
-  global.player_index_to_commander_controller = {};
+  storage.force_to_controllers = {};
+  storage.player_index_to_controllers = {};
+  storage.player_index_to_commander_controller = {};
 
   -- This will re-add all the entities we keep track of.
   find_unassociated_entities();
@@ -296,7 +296,7 @@ end;
 
 local function check_or_fix_invariants()
   if (not check_invariants()) then
-    reset_global_data();
+    reset_storage_data();
 
     if (not check_invariants()) then
       error("Invariants are still broken even after attempting repair.");
@@ -321,8 +321,8 @@ end;
 -- Some entities cannot have controllers, in which case return nil.
 local function add_entity(e)
   local force_name = force_of_entity(e);
-  global.force_to_controllers[force_name] =
-    global.force_to_controllers[force_name] or {};
+  storage.force_to_controllers[force_name] =
+    storage.force_to_controllers[force_name] or {};
 
   local player_index = player_index_of_entity(e);
   if (player_index < 0) then
@@ -334,12 +334,12 @@ local function add_entity(e)
           " force=" .. force_name);
     return nil;
   end;
-  global.player_index_to_controllers[player_index] =
-    global.player_index_to_controllers[player_index] or {};
+  storage.player_index_to_controllers[player_index] =
+    storage.player_index_to_controllers[player_index] or {};
 
   local controller = new_entity_controller(e);
-  global.force_to_controllers[force_name][e.unit_number] = controller;
-  global.player_index_to_controllers[player_index][e.unit_number] = controller;
+  storage.force_to_controllers[force_name][e.unit_number] = controller;
+  storage.player_index_to_controllers[player_index][e.unit_number] = controller;
 
   if (e.name == "robotank-entity") then
     -- Is there already an associated turret here?
@@ -383,7 +383,7 @@ end;
 -- Search the entire data structure for a controller for 'entity',
 -- ignoring its force or player_index.
 local function find_entity_controller_slow_search(entity)
-  for force, force_controllers in pairs(global.force_to_controllers) do
+  for force, force_controllers in pairs(storage.force_to_controllers) do
     for unit_number, controller in pairs(force_controllers) do
       if (controller.entity == entity) then
         return controller;
@@ -407,7 +407,7 @@ local function find_entity_controller(entity)
     diag(3, "find_entity_controller: player_index < 0, resorting to slow search");
     return find_entity_controller_slow_search(entity);
   end;
-  local pi_controllers = global.player_index_to_controllers[player_index];
+  local pi_controllers = storage.player_index_to_controllers[player_index];
   if (pi_controllers) then
     return pi_controllers[entity.unit_number];
   else
@@ -417,67 +417,67 @@ end;
 
 
 -- The mod just started running.  Some data may or may not have been
--- loaded from 'global' (depending on whether the mod was previously
+-- loaded from 'storage' (depending on whether the mod was previously
 -- part of the game, and what version it was if so).  Make sure it is
 -- properly initialized.
-local function initialize_loaded_global_data()
-  diag(3, "Loaded data_version: " .. serpent.line(global.data_version));
+local function initialize_loaded_storage_data()
+  diag(3, "Loaded data_version: " .. serpent.line(storage.data_version));
 
-  if (global.data_version == 1) then
+  if (storage.data_version == 1) then
     diag(2, "RoboTank: Upgrading data_version 1 to 2.");
 
     -- I renamed "force_to_vehicles" to "force_to_controllers".
-    global.force_to_controllers = global.force_to_vehicles;
-    global.force_to_vehicles = nil;
+    storage.force_to_controllers = storage.force_to_vehicles;
+    storage.force_to_vehicles = nil;
 
     -- I also renamed "nearby_vehicles" to "nearby_controllers".
-    if (global.force_to_controllers ~= nil) then
-      for _, force_controllers in pairs(global.force_to_controllers) do
+    if (storage.force_to_controllers ~= nil) then
+      for _, force_controllers in pairs(storage.force_to_controllers) do
         for _, controller in pairs(force_controllers) do
           controller.nearby_controllers = controller.nearby_vehicles;
           controller.nearby_vehicles = nil;
         end;
       end;
     end;
-    global.data_version = 2;
+    storage.data_version = 2;
   end;
 
-  if (global.data_version == 2) then
+  if (storage.data_version == 2) then
     diag(2, "RoboTank: Upgrading data_version 2 to 3.");
 
     -- I renamed "vehicle" to "entity".
-    if (global.force_to_controllers ~= nil) then
-      for _, force_controllers in pairs(global.force_to_controllers) do
+    if (storage.force_to_controllers ~= nil) then
+      for _, force_controllers in pairs(storage.force_to_controllers) do
         for _, controller in pairs(force_controllers) do
           controller.entity = controller.vehicle;
           controller.vehicle = nil;
         end;
       end;
     end;
-    global.data_version = 3;
+    storage.data_version = 3;
   end;
 
-  if (global.data_version == 3) then
+  if (storage.data_version == 3) then
     diag(2, "RoboTank: Upgrading data_version 3 to 4.");
 
     -- I removed "nearby_controllers", instead storing that outside
-    -- of 'global'.
-    if (global.force_to_controllers ~= nil) then
-      for _, force_controllers in pairs(global.force_to_controllers) do
+    -- of 'storage'.
+    if (storage.force_to_controllers ~= nil) then
+      for _, force_controllers in pairs(storage.force_to_controllers) do
         for _, controller in pairs(force_controllers) do
           controller.nearby_controllers = nil;
         end;
       end;
     end;
-    global.data_version = 4;
+    storage.data_version = 4;
   end;
 
-  if (global.data_version == 4) then
+  if (storage.data_version == 4) then
     diag(2, "RoboTank: Upgrading data_version 4 to 5.");
 
     -- I added 'player_index_to_controllers'.
-    global.player_index_to_controllers = {};
-    for force, force_controllers in pairs(global.force_to_controllers) do
+    storage.player_index_to_controllers = {};
+    for force, force_controllers in pairs(storage.force_to_controllers) do
       for unit_number, controller in pairs(force_controllers) do
         local entity = controller.entity;
         if (entity.valid) then
@@ -487,9 +487,9 @@ local function initialize_loaded_global_data()
             diag(3, "unit " .. unit_number .. " has no player index, removing it");
             force_controllers[unit_number] = nil;
           else
-            global.player_index_to_controllers[player_index] =
-              global.player_index_to_controllers[player_index] or {}
-            global.player_index_to_controllers[player_index][unit_number] = controller;
+            storage.player_index_to_controllers[player_index] =
+              storage.player_index_to_controllers[player_index] or {}
+            storage.player_index_to_controllers[player_index][unit_number] = controller;
             diag(3, "added unit " .. unit_number .. " to player_index " .. player_index);
           end;
         else
@@ -506,40 +506,50 @@ local function initialize_loaded_global_data()
     -- 'player_index_to_commander_controller'.  I will simply remove
     -- the old map and initialize the new one to empty, in anticipation
     -- that commander refresh will populate it.
-    global.force_to_commander_controller = nil;
-    global.player_index_to_commander_controller = {};
-    global.data_version = 5;
+    storage.force_to_commander_controller = nil;
+    storage.player_index_to_commander_controller = {};
+    storage.data_version = 5;
   end;
 
-  global.data_version = 5;
+  if (storage.data_version == 5) then
+    diag(2, "RoboTank: Upgrading data_version 5 to 6.");
 
-  if (global.player_index_to_commander_controller == nil) then
+    -- For the moment, there is nothing to do.  5 was the last version
+    -- for Factorio 1.x, and 6 is the first for Factorio 2.x, so I am
+    -- creating this as a placeholder for that transition.
+
+    storage.data_version = 6;
+  end;
+
+  storage.data_version = 6;
+
+  if (storage.player_index_to_commander_controller == nil) then
     diag(3, "player_index_to_commander_controller was nil, setting it to empty.");
-    global.player_index_to_commander_controller = {};
+    storage.player_index_to_commander_controller = {};
   else
     diag(3, "player_index_to_commander_controller has " ..
-            table_size(global.player_index_to_commander_controller) .. " entries.");
+            table_size(storage.player_index_to_commander_controller) .. " entries.");
   end;
 
-  if (global.force_to_controllers == nil) then
+  if (storage.force_to_controllers == nil) then
     diag(3, "force_to_controllers was nil, setting it to empty.");
-    global.force_to_controllers = {};
+    storage.force_to_controllers = {};
   else
     diag(3, "force_to_controllers has " ..
-            table_size(global.force_to_controllers) .. " entries.");
-    for force, force_controllers in pairs(global.force_to_controllers) do
+            table_size(storage.force_to_controllers) .. " entries.");
+    for force, force_controllers in pairs(storage.force_to_controllers) do
       diag(3, "  force \"" .. force .. "\" has " ..
               table_size(force_controllers) .. " controllers.");
     end;
   end;
 
-  if (global.player_index_to_controllers == nil) then
+  if (storage.player_index_to_controllers == nil) then
     diag(3, "player_index_to_controllers was nil, setting it to empty.");
-    global.player_index_to_controllers = {};
+    storage.player_index_to_controllers = {};
   else
     diag(3, "player_index_to_controllers has " ..
-            table_size(global.player_index_to_controllers) .. " entries.");
-    for player_index, pi_controllers in pairs(global.player_index_to_controllers) do
+            table_size(storage.player_index_to_controllers) .. " entries.");
+    for player_index, pi_controllers in pairs(storage.player_index_to_controllers) do
       diag(3, "  player_index " .. player_index .. " has " ..
               table_size(pi_controllers) .. " controllers.");
     end;
@@ -602,8 +612,8 @@ find_unassociated_entities = function()
 
   -- And player characters, mainly so we can avoid running them over
   -- when driving the robotanks.
-  for _, player in ipairs(game.surfaces[1].find_entities_filtered{name = "player"}) do
-    found_an_entity(player, turrets);
+  for _, character in ipairs(game.surfaces[1].find_entities_filtered{name = "character"}) do
+    found_an_entity(character, turrets);
   end;
 
   -- Destroy any unassociated turrets.  There should never be any, but
@@ -757,6 +767,8 @@ local function maybe_load_robotank_turret_ammo(controller)
     end;
 
     if (ammo_item_name) then
+      -- TODO: Rewrite this to use "swap" primitive.
+
       -- Move up to 'ammo_move_magazine_count' ammo magazines into the turret.
       local got = car_inv.remove{name=ammo_item_name, count=ammo_move_magazine_count};
       if (got < 1) then
@@ -1366,13 +1378,13 @@ end;
 -- Find the current commander of 'player_index' and deal with changes.
 local function refresh_commander(player_index, pi_controllers)
   -- Get the old commander so I can detect changes.
-  local old_cc = global.player_index_to_commander_controller[player_index];
+  local old_cc = storage.player_index_to_commander_controller[player_index];
 
   -- Find the new commander.
   local new_cc = find_commander_controller(pi_controllers);
 
   if (new_cc ~= old_cc) then
-    global.player_index_to_commander_controller[player_index] = new_cc;
+    storage.player_index_to_commander_controller[player_index] = new_cc;
     if (new_cc == nil) then
       diag(2, "Player index " .. player_index .. " lost its commander.");
 
@@ -1413,7 +1425,7 @@ remove_entity_controller = function(controller)
   -- player indices.  (At some call sites I know the force, and/or that
   -- the entity is valid, but I choose to make this as general as
   -- possible despite the performance cost.)
-  for force, force_controllers in pairs(global.force_to_controllers) do
+  for force, force_controllers in pairs(storage.force_to_controllers) do
     for unit_number, other in pairs(force_controllers) do
       if (other == controller) then
         force_controllers[unit_number] = nil;
@@ -1429,7 +1441,7 @@ remove_entity_controller = function(controller)
   end;
 
   -- Remove references from 'player_index_to_controllers'.
-  for player_index, pi_controllers in pairs(global.player_index_to_controllers) do
+  for player_index, pi_controllers in pairs(storage.player_index_to_controllers) do
     for unit_number, other in pairs(pi_controllers) do
       if (other == controller) then
         pi_controllers[unit_number] = nil;
@@ -1438,7 +1450,7 @@ remove_entity_controller = function(controller)
     end;
 
     -- Check commander.
-    if (global.player_index_to_commander_controller[player_index] == controller) then
+    if (storage.player_index_to_commander_controller[player_index] == controller) then
       refresh_commander(player_index, pi_controllers);
     end;
   end;
@@ -1450,7 +1462,7 @@ end;
 -- a backup procedure now that I am also tracking player characters
 -- since I don't fully understand their lifecycle.
 remove_invalid_entities = function()
-  for force, force_controllers in pairs(global.force_to_controllers) do
+  for force, force_controllers in pairs(storage.force_to_controllers) do
     for unit_number, controller in pairs(force_controllers) do
       if (not controller.entity.valid) then
         diag(3, "Removing invalid entity " .. unit_number .. ".");
@@ -1459,7 +1471,7 @@ remove_invalid_entities = function()
     end;
   end;
 
-  for player_index, controller in pairs(global.player_index_to_commander_controller) do
+  for player_index, controller in pairs(storage.player_index_to_commander_controller) do
     if (not controller.entity.valid) then
       -- This can only happen if somehow the commander was not among
       -- the controllers scanned in the loop above, since if it was,
@@ -1496,7 +1508,7 @@ local function update_robotank_player_index_on_tick(tick, player_index, pi_contr
   end;
 
   -- Check if the player index has a commander.
-  local commander_controller = global.player_index_to_commander_controller[player_index];
+  local commander_controller = storage.player_index_to_commander_controller[player_index];
   local has_commander = (commander_controller ~= nil);
 
   -- True if we should do certain checks.  Reduce frequency when there
@@ -1606,7 +1618,7 @@ local function update_robotank_player_index_on_tick(tick, player_index, pi_contr
           -- I disable this when there is no commander because the logic
           -- above causes this code to only run every 5 ticks with no
           -- commander.  The turret is still active without a commander,
-          -- and will therefore can fire in a direction different from the
+          -- and therefore can fire in a direction different from the
           -- visible vehicle turret, but I accept that minor infidelity.
           --
           -- I would like to be able to detect when the hidden turret
@@ -1632,7 +1644,7 @@ local function update_robotank_player_index_on_tick(tick, player_index, pi_contr
           -- considers all entities with the same force so that allies
           -- will coordinate regarding not running into each other.
           local force_controllers =
-            global.force_to_controllers[force_of_entity(controller.entity)];
+            storage.force_to_controllers[force_of_entity(controller.entity)];
           drive_vehicle(tick, force_controllers, driving_commander_vehicle,
             driving_commander_velocity, unit_number, controller);
         end;
@@ -1643,7 +1655,7 @@ end;
 
 -- This is called either when we start a brand new game, or when we
 -- load a map that previously did not have RoboTank enabled.  In
--- either case, we are transitioning from a global state in which
+-- either case, we are transitioning from a storage state in which
 -- RoboTank was absent to one where it is present.
 script.on_init(function()
   diag(3, "RoboTank on_init called.");
@@ -1658,24 +1670,24 @@ script.on_init(function()
   --
   -- There is also the consideration of the map editor, where on_tick
   -- never runs at all.
-  must_initialize_loaded_global_data = false;
-  initialize_loaded_global_data();
+  must_initialize_loaded_storage_data = false;
+  initialize_loaded_storage_data();
 end);
 
 -- This is called when we load a map that previously had RoboTank.
 -- According to the docs, there is a very limited set of actions that
 -- can be performed here, none of which seem to apply to this mod:
--- https://lua-api.factorio.com/latest/LuaBootstrap.html
+-- https://lua-api.factorio.com/latest/classes/LuaBootstrap.html#on_load
 script.on_load(function()
   diag(3, "RoboTank on_load called.");
 end);
 
 script.on_event(defines.events.on_tick, function(e)
   if (must_rescan_world) then
-    if (must_initialize_loaded_global_data) then
+    if (must_initialize_loaded_storage_data) then
       diag(3, "RoboTank: running first tick initialization on tick " .. e.tick);
-      must_initialize_loaded_global_data = false;
-      initialize_loaded_global_data();
+      must_initialize_loaded_storage_data = false;
+      initialize_loaded_storage_data();
     end;
 
     diag(3, "RoboTank: rescanning world");
@@ -1685,7 +1697,7 @@ script.on_event(defines.events.on_tick, function(e)
   end;
 
   -- For each player index, update the robotanks.
-  for player_index, pi_controllers in pairs(global.player_index_to_controllers) do
+  for player_index, pi_controllers in pairs(storage.player_index_to_controllers) do
     update_robotank_player_index_on_tick(e.tick, player_index, pi_controllers);
   end;
 
@@ -1700,21 +1712,21 @@ script.on_event(defines.events.on_tick, function(e)
   -- This is something I manually enable when I want to force the
   -- invariant repair code to run.
   --if ((e.tick % 600) == 0) then
-  --  reset_global_data();
+  --  reset_storage_data();
   --end;
 end);
 
 script.on_configuration_changed(
   function(ccd)
-    if (must_initialize_loaded_global_data) then
+    if (must_initialize_loaded_storage_data) then
       diag(3, "RoboTank: on_configuration_changed: " .. serpent.block(ccd));
 
       -- This is necessary because we need our tables updated sooner
       -- than it happens via on_tick.  (Doing it in on_tick at all is
       -- a mistake that I have yet to fully correct.)
-      diag(2, "RoboTank: on_configuration_changed: initializing global data");
-      must_initialize_loaded_global_data = false;
-      initialize_loaded_global_data();
+      diag(2, "RoboTank: on_configuration_changed: initializing storage data");
+      must_initialize_loaded_storage_data = false;
+      initialize_loaded_storage_data();
     end;
   end
 );
@@ -1743,6 +1755,7 @@ script.on_event({defines.events.on_player_mined_entity, defines.events.on_robot_
           -- the turret entity so it is not lost.
           local turret_inv = controller.turret.get_inventory(defines.inventory.turret_ammo);
           if (turret_inv) then
+            -- TODO: Use swap instead.
             local res = copy_inventory_from_to(turret_inv, e.buffer);
             diag(2, "Grabbed " .. res .. " items from the turret before it was destroyed.");
           end;
@@ -1767,16 +1780,16 @@ script.on_event({defines.events.on_player_mined_entity, defines.events.on_robot_
 -- disassociated from the player, so its player_index is -1.
 script.on_event({defines.events.on_entity_died},
   function(e)
-    if (e.entity.type == "car" or e.entity.name == "player") then
-      diag(2, "Vehicle or player " .. e.entity.unit_number .. " died.");
+    if (e.entity.type == "car" or e.entity.name == "character") then
+      diag(2, "Vehicle or character " .. e.entity.unit_number .. " died.");
 
       local controller = find_entity_controller(e.entity);
       if (controller) then
         remove_entity_controller(controller);
       else
         -- I am supposed to be keeping track of all vehicles and
-        -- players, but might miss some due to mods.
-        diag(2, "But the vehicle or player was not in my tables.");
+        -- characters, but might miss some due to mods.
+        diag(2, "But the vehicle or character was not in my tables.");
       end;
 
     elseif (is_robotank_turret_entity_name(e.entity.name)) then
@@ -1789,7 +1802,7 @@ script.on_event({defines.events.on_entity_died},
 
       -- Find and remove the controller of the vehicle with this turret.
       local force = force_of_entity(e.entity);
-      for unit_number, controller in pairs(global.force_to_controllers[force]) do
+      for unit_number, controller in pairs(storage.force_to_controllers[force]) do
         if (controller.turret == e.entity) then
           diag(2, "Killing the turret's owner, vehicle " .. unit_number .. ".");
           controller.entity.die();
@@ -1807,7 +1820,7 @@ script.on_event({defines.events.on_entity_died},
 local function on_players_changed()
   diag(2, "RoboTank: on_players_changed");
 
-  -- At this point, a removed player entity is not invalid yet.  We
+  -- At this point, a removed character entity is not invalid yet.  We
   -- need to wait for the start of the next tick to detect that it is
   -- invalid.
   --
@@ -1860,7 +1873,7 @@ local function on_player_driving_changed_state(event)
       find_or_create_entity_controller(character);
 
       -- Re-activate any disabled turrets.
-      local pi_controllers = global.player_index_to_controllers[event.player_index];
+      local pi_controllers = storage.player_index_to_controllers[event.player_index];
       if (pi_controllers == nil) then
         -- I do not know how this happens.  'character' is obtained by
         -- lookup in game.players[].  But if its player index matched

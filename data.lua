@@ -34,7 +34,7 @@ local robotank_technology = {
   icon_size = 128,
   order = "e-c-c-2",                   -- Right after "tank".
   prerequisites = {
-    "advanced-electronics-2",          -- Processing unit.
+    "processing-unit",                 -- Processing unit (blue circuit).
     "robotics",                        -- Flying robot frame.
     "tank"                             -- Ordinary tank.
   },
@@ -44,15 +44,49 @@ local robotank_technology = {
 -- Recipe to allow one to create the transmitter that controls robotanks.
 local transmitter_recipe = {
   type = "recipe",
+
+  -- TODO: Remove the "-recipe" suffix here and elsewhere.
   name = "robotank-transmitter-recipe",
+
   enabled = false,
+
   ingredients = {
-    {"iron-plate", 6},            -- Six sides of a metal box.
-    {"processing-unit", 1},       -- Raise tech requirements.
-    {"copper-cable", 1},          -- Antenna.
-    {"battery", 1},               -- Power source.
+    -- Six sides of a metal box.
+    {
+      amount = 6,
+      name = "iron-plate",
+      type = "item",
+    },
+
+    -- Raise tech requirements.
+    {
+      amount = 1,
+      name = "processing-unit",
+      type = "item",
+    },
+
+    -- Antenna.
+    {
+      amount = 1,
+      name = "copper-cable",
+      type = "item",
+    },
+
+    -- Power source.
+    {
+      amount = 1,
+      name = "battery",
+      type = "item",
+    },
   },
-  result = "robotank-transmitter-item",
+
+  results = {
+    {
+      amount = 1,
+      name = "robotank-transmitter-item",
+      type = "item",
+    },
+  },
 };
 
 -- Inventory item corresponding to the transmitter.
@@ -70,15 +104,38 @@ local transmitter_item = {
 -- Recipe to allow one to create the robotank.
 local robotank_recipe = {
   type = "recipe",
-  name = "robotank-recipe",
+  name = "robotank-recipe",       -- TODO: Remove "-recipe".
   enabled = false,
   energy_required = 2,            -- 2 seconds to build.
   ingredients = {
-    {"tank", 1},                  -- Base vehicle.
-    {"processing-unit", 20},      -- Computer for driving and shooting algorithms.
-    {"flying-robot-frame", 1},    -- The robot "driver", with its implicit radio receiver.
+    -- Base vehicle.
+    {
+      amount = 1,
+      name = "tank",
+      type = "item",
+    },
+
+    -- Computer for driving and shooting algorithms.
+    {
+      amount = 20,
+      name = "processing-unit",
+      type = "item",
+    },
+
+    -- The robot "driver", with its implicit radio receiver.
+    {
+      amount = 1,
+      name = "flying-robot-frame",
+      type = "item",
+    },
   },
-  result = "robotank-item",
+  results = {
+    {
+      amount = 1,
+      name = "robotank-item",
+      type = "item",
+    },
+  },
 };
 
 -- Inventory item corresponding to the robotank.
@@ -131,8 +188,10 @@ local robotank_turret_entity = table.deepcopy(data.raw["ammo-turret"]["gun-turre
 -- I don't know how to do that in a backward compatible way yet.
 robotank_turret_entity.name = "robotank-turret-entity";
 
--- Do not collide with parent tank.
-robotank_turret_entity.collision_mask = {};
+-- Disable all collision so it does not collide with parent tank.
+robotank_turret_entity.collision_mask = {
+  layers = {},
+};
 
 -- Also empty the turret collision box, which otherwise interferes with
 -- an inserter trying to put items into the tank.
