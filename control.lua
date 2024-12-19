@@ -108,6 +108,11 @@ local function new_entity_controller(e)
     -- (name=="robotank"), or a player character (name=="character").
     entity = e,
 
+    -- Copy of the unit number.  Normally this is redundant, but if I
+    -- discover that the entity is invalid (which should not happen), I
+    -- want a way to identify which entity it was.
+    unit_number = e.unit_number,
+
     -- Associated turret entity that does the shooting.  It is always
     -- non-nil once 'add_entity' does its job for any robotank
     -- vehicle, and nil for any other kind of entity.
@@ -902,49 +907,58 @@ local function collision_avoidance(tick, force_controllers, unit_number, control
 
   -- Scan nearby entities for collision potential.
   for _, other in ipairs(unit_number_to_nearby_controllers[unit_number]) do
-    -- Are we too close to turn?
-    local other_entity_position = other.entity.position;
-    local dist_sq = mag_sq_subtract_vec(other_entity_position, v_position);
-    if (dist_sq < 11.5) then      -- about 3.4 squared
-      cannot_turn = true;
-    end;
-
-    -- At current velocities, how long (how many ticks) until we come
-    -- within 4 units of the other unit, and in which direction would
-    -- contact occur?
-    local approach_ticks, approach_angle = predict_approach(
-      other_entity_position,
-      entity_velocity(other.entity),
-      v_position,
-      v_velocity,
-      4);
-    local approach_orientation = radians_to_orientation(approach_angle);
-    local abs_orient_diff = absolute_orientation_difference(approach_orientation, v_orientation);
-    if (approach_ticks ~= nil and abs_orient_diff <= 0.25) then
-      -- Contact would occur in front, so if it is imminent, then we
-      -- need to slow down.
-      if (approach_ticks < v_speed * 1000) then
-        must_brake = true;
-      elseif (approach_ticks < (v_speed + 0.02) * 2000) then     -- speed+0.02: Presumed effect of acceleration.
-        cannot_accelerate = true;
+    if (other.entity.valid) then
+      -- Are we too close to turn?
+      local other_entity_position = other.entity.position;
+      local dist_sq = mag_sq_subtract_vec(other_entity_position, v_position);
+      if (dist_sq < 11.5) then      -- about 3.4 squared
+        cannot_turn = true;
       end;
-    end;
 
-    --[[
-    if ((tick % 10 == 0) and (other.entity.type ~= "car" or other.entity.get_driver() == nil)) then
-      log("" .. controller.entity.unit_number ..
-          " approaching " .. other.entity.unit_number ..
-          ": dist=" .. math.sqrt(dist_sq) ..
-          " ticks=" .. serpent.line(approach_ticks) ..
-          " angle=" .. serpent.line(approach_angle) ..
-          --" approach_orientation=" .. serpent.line(approach_orientation) ..
-          " adorient=" .. serpent.line(abs_orient_diff) ..
-          " speed=" .. v.speed ..
-          " cannot_turn=" .. serpent.line(cannot_turn) ..
-          " must_brake=" .. serpent.line(must_brake) ..
-          " cannot_accelerate=" .. serpent.line(cannot_accelerate));
+      -- At current velocities, how long (how many ticks) until we come
+      -- within 4 units of the other unit, and in which direction would
+      -- contact occur?
+      local approach_ticks, approach_angle = predict_approach(
+        other_entity_position,
+        entity_velocity(other.entity),
+        v_position,
+        v_velocity,
+        4);
+      local approach_orientation = radians_to_orientation(approach_angle);
+      local abs_orient_diff = absolute_orientation_difference(approach_orientation, v_orientation);
+      if (approach_ticks ~= nil and abs_orient_diff <= 0.25) then
+        -- Contact would occur in front, so if it is imminent, then we
+        -- need to slow down.
+        if (approach_ticks < v_speed * 1000) then
+          must_brake = true;
+        elseif (approach_ticks < (v_speed + 0.02) * 2000) then     -- speed+0.02: Presumed effect of acceleration.
+          cannot_accelerate = true;
+        end;
+      end;
+
+      --[[
+      if ((tick % 10 == 0) and (other.entity.type ~= "car" or other.entity.get_driver() == nil)) then
+        log("" .. controller.entity.unit_number ..
+            " approaching " .. other.entity.unit_number ..
+            ": dist=" .. math.sqrt(dist_sq) ..
+            " ticks=" .. serpent.line(approach_ticks) ..
+            " angle=" .. serpent.line(approach_angle) ..
+            --" approach_orientation=" .. serpent.line(approach_orientation) ..
+            " adorient=" .. serpent.line(abs_orient_diff) ..
+            " speed=" .. v.speed ..
+            " cannot_turn=" .. serpent.line(cannot_turn) ..
+            " must_brake=" .. serpent.line(must_brake) ..
+            " cannot_accelerate=" .. serpent.line(cannot_accelerate));
+      end;
+      --]]
+
+    else
+      -- I think I fixed the case where this was happening.
+      diag(1, "collision_avoidance: Nearby controllers list for unit " ..
+              unit_number .. " contains an invalid entity that had " ..
+              "unit number " .. other.unit_number);
+
     end;
-    --]]
   end;
 
   return cannot_turn, must_brake, cannot_accelerate;
@@ -1384,15 +1398,18 @@ remove_entity_controller = function(controller)
   -- possible despite the performance cost.)
   for force, force_controllers in pairs(storage.force_to_controllers) do
     for unit_number, other in pairs(force_controllers) do
+      -- Refresh all nearby entities since the removed one might
+      -- be in some of the lists.
+      --
+      -- Furthermore, even the list for the removed unit must be cleared
+      -- because if it gets quickly replaced, and its unit number
+      -- reused, then its current list could get used, but things it
+      -- refers to could die in the meantime.
+      unit_number_to_nearby_controllers[unit_number] = nil;
+
       if (other == controller) then
         force_controllers[unit_number] = nil;
         diag(3, "Entity " .. unit_number .. " removed from force->controllers table.");
-      else
-        -- Refresh the nearby entities since the removed one might
-        -- be in that list.  We only do this for the force->controllers
-        -- loop, not PI->controllers, because the scope of nearby units
-        -- is the force.
-        unit_number_to_nearby_controllers[unit_number] = nil;
       end;
     end;
   end;
