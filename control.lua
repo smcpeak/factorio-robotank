@@ -73,7 +73,7 @@ local function new_entity_controller(e)
   return {
     -- Reference to the Factorio entity we are controlling.  This is
     -- either a vehicle (type=="car"), which itself might be a robotank
-    -- (name=="robotank-entity"), or a player character (name=="character").
+    -- (name=="robotank"), or a player character (name=="character").
     entity = e,
 
     -- Associated turret entity that does the shooting.  It is always
@@ -343,7 +343,7 @@ local function add_entity(e)
   storage.force_to_controllers[force_name][e.unit_number] = controller;
   storage.player_index_to_controllers[player_index][e.unit_number] = controller;
 
-  if (e.name == "robotank-entity") then
+  if (e.name == "robotank") then
     -- Is there already an associated turret here?
     local p = controller.entity.position;
     local candidates = e.surface.find_entities_filtered{
@@ -656,7 +656,7 @@ local function find_commander_controller(pi_controllers)
     else
       -- It must have the transmitter item in its trunk.
       local inv = v.get_inventory(defines.inventory.car_trunk);
-      if (inv and inv.get_item_count("robotank-transmitter-item") > 0) then
+      if (inv and inv.get_item_count("robotank-transmitter") > 0) then
         return controller;
       end;
     end;
@@ -1392,7 +1392,7 @@ local function refresh_commander(player_index, pi_controllers)
 
       -- Reset driving controls and formation positions.
       for unit_number, controller in pairs(pi_controllers) do
-        if (controller.entity.name == "robotank-entity") then
+        if (controller.entity.name == "robotank") then
           controller.entity.riding_state = {
             acceleration = defines.riding.acceleration.nothing,
             direction = defines.riding.direction.straight,

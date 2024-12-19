@@ -80,7 +80,7 @@ local transmitter_recipe = {
   results = {
     {
       amount = 1,
-      name = "robotank-transmitter-item",
+      name = "robotank-transmitter",
       type = "item",
     },
   },
@@ -88,7 +88,7 @@ local transmitter_recipe = {
 
 -- Inventory item corresponding to the transmitter.
 local transmitter_item = {
-  name = "robotank-transmitter-item",
+  name = "robotank-transmitter",
   flags = {},
   icon = "__RoboTank__/graphics/icons/transmitter.png",
   icon_size = 32,
@@ -129,7 +129,7 @@ local robotank_recipe = {
   results = {
     {
       amount = 1,
-      name = "robotank-item",
+      name = "robotank",
       type = "item",
     },
   },
@@ -137,8 +137,8 @@ local robotank_recipe = {
 
 -- Inventory item corresponding to the robotank.
 local robotank_item = table.deepcopy(data.raw["item-with-entity-data"].tank);
-robotank_item.name = "robotank-item";
-robotank_item.place_result = "robotank-entity";
+robotank_item.name = "robotank";
+robotank_item.place_result = "robotank";
 robotank_item.stack_size = 5;    -- Like train cars, etc.
 robotank_item.subgroup = "defensive-structure";
 robotank_item.order = "x[robotank]";
@@ -152,11 +152,11 @@ robotank_item.icons = {
 
 -- World entity for the robotank.
 local robotank_entity = table.deepcopy(data.raw.car.tank);
-robotank_entity.name = "robotank-entity";
+robotank_entity.name = "robotank";
 robotank_entity.icons = robotank_item.icons;
 robotank_entity.minable = {
   mining_time = 0.25,          -- Short time to easily pick up a squad.
-  result = "robotank-item",
+  result = "robotank",
 };
 
 -- Make it visually distinct from the normal tank.
