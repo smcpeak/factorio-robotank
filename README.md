@@ -117,15 +117,6 @@ to the forward position and stay there, not appearing to aim at their targets.
 When a commander is created, the link between the visible turret and hidden
 turret aim direction is re-established.
 
-The new worm and spitter mechanics in Factorio 0.17 cause a balance issue
-because they are unable to properly lead RoboTanks due to the fact that
-the worms are actually shooting at the hidden turret entity, and turrets do not
-have a velocity attribute (the mod moves them via teleportation).  Thus,
-RoboTanks may take less damage than a normal tank in similar circumstances.
-In other situations they can take more damage because area-of-effect weapons
-damage both the vehicle and its hidden turret.  I still haven't completely
-sorted all this out.
-
 Known Issues with Other Mods
 ============================
 [SchallTankPlatoon](https://mods.factorio.com/mod/SchallTankPlatoon) introduces
