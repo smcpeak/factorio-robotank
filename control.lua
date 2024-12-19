@@ -664,13 +664,16 @@ local function find_commander_controller(pi_controllers)
   return nil;
 end;
 
--- Get the name of some item in the source inventory that can be
--- added to the destination inventory.  If there are more than one,
--- returns one arbitrarily.  Otherwise return nil.
-local function get_insertable_item(source, dest)
-  for _, item_and_count in ipairs(source.get_contents()) do
-    if (dest.can_insert(item_and_count)) then
-      return item_and_count.name;
+-- Get a LuaItemStack from the source inventory that can be added to the
+-- destination inventory.  If there are more than one, returns one
+-- arbitrarily.  Otherwise return nil.
+local function get_insertable_stack(source, dest)
+  for slot_num = 1, #source do
+    local stack = source[slot_num];
+    if (stack.count > 0) then
+      if (dest.can_insert(stack)) then
+        return stack;
+      end;
     end;
   end;
   return nil;
@@ -698,68 +701,83 @@ local function maybe_load_robotank_turret_ammo(controller)
     end;
 
     -- Is there ammo in an ammo slot that fits in the turret?
-    local ammo_item_name = get_insertable_item(car_inv, turret_inv);
+    local ammo_stack = get_insertable_stack(car_inv, turret_inv);
 
-    if (not ammo_item_name) then
+    if (not ammo_stack) then
       -- No ammo fits in the current turret.  Is there ammo
       -- compatible with a different robotank turret entity?
-      for k, n in pairs(car_inv.get_contents()) do
-        -- I'm not sure what effect passing "turret" here has.
-        local ammo_type = prototypes.item[k].get_ammo_type("turret");
-        if (ammo_type ~= nil) then
-          local new_turret_name = ammo_category_to_turret_name[ammo_type.category];
-          if (new_turret_name ~= nil) then
-            diag(2, "Changing turret on vehicle " .. controller.entity.unit_number ..
-                    " from " .. controller.turret.name ..
-                    " to " .. new_turret_name ..
-                    " due to loading ammo " .. k ..
-                    " with category " .. ammo_type.category .. ".");
+      for candidate_slot_num = 1, #car_inv do
+        local candidate_stack = car_inv[candidate_slot_num];
+        if (candidate_stack.count > 0) then
 
-            -- Remove the old turret.
-            if (not controller.turret.destroy()) then
-              diag(1, "WARNING: Failed to destroy turret while changing ammo type!");
+          -- Check that the stack contains ammo.  This should be
+          -- redundant since we are iterating over the ammunition
+          -- inventory of the vehicle, but I do it for extra safety.
+          local candidate_proto = prototypes.item[candidate_stack.name];
+          if (candidate_proto.type == "ammo") then
+
+            local ammo_category_name = candidate_proto.ammo_category.name;
+            diag(4, "Candidate ammo stack:" ..
+              " name=" .. candidate_stack.name ..
+              " count=" .. candidate_stack.count ..
+              " category=" .. ammo_category_name);
+
+            -- Look up which of the robotank turret types, if any, is
+            -- compatible with this category of ammo.
+            local new_turret_name = ammo_category_to_turret_name[ammo_category_name];
+            if (new_turret_name ~= nil) then
+              diag(2, "Changing turret on vehicle " .. controller.entity.unit_number ..
+                      " from " .. controller.turret.name ..
+                      " to " .. new_turret_name ..
+                      " due to loading ammo " .. candidate_stack.name ..
+                      " with category " .. ammo_category_name .. ".");
+
+              -- Remove the old turret.
+              if (not controller.turret.destroy()) then
+                diag(1, "WARNING: Failed to destroy turret while changing ammo type!");
+              end;
+
+              -- Add the new turret.
+              controller.turret = controller.entity.surface.create_entity{
+                name = new_turret_name,
+                position = controller.entity.position,
+                force = controller.entity.force};
+              if (not controller.turret) then
+                error("Failed to create turret (" .. new_turret_name ..
+                      ") for robotank!");
+              end;
+
+              -- Refresh the reference to its inventory.
+              turret_inv = controller.turret.get_inventory(defines.inventory.turret_ammo);
+              if (turret_inv == nil) then
+                -- This will leave us in a state where we have an attached
+                -- turret but can never fill it or change it...
+                diag(1, "Failed to get turret inventory after creating " ..
+                        " a new turret with name " .. new_turret_name .. "!");
+                return;
+              end;
+
+              -- Stop looping over the ammo slots.  Set `ammo_stack`
+              -- so we will skip checking the trunk and go straight to
+              -- inserting the ammo into the new turret.
+              ammo_stack = candidate_stack;
+              break;
             end;
-
-            -- Add the new turret.
-            controller.turret = controller.entity.surface.create_entity{
-              name = new_turret_name,
-              position = controller.entity.position,
-              force = controller.entity.force};
-            if (not controller.turret) then
-              error("Failed to create turret (" .. new_turret_name ..
-                    ") for robotank!");
-            end;
-
-            -- Refresh the reference to its inventory.
-            turret_inv = controller.turret.get_inventory(defines.inventory.turret_ammo);
-            if (turret_inv == nil) then
-              -- This will leave us in a state where we have an attached
-              -- turret but can never fill it or change it...
-              diag(1, "Failed to get turret inventory after creating " ..
-                      " a new turret with name " .. new_turret_name .. "!");
-              return;
-            end;
-
-            -- Stop looping over the ammo slots.  Set ammo_item_name
-            -- so we will skip checking the trunk and go straight to
-            -- inserting the ammo into the new turret.
-            ammo_item_name = k;
-            break;
           end;
         end;
       end; -- for loop over inventory contents
     end;
 
-    if (not ammo_item_name) then
+    if (not ammo_stack) then
       -- Try the trunk.
       car_inv = controller.entity.get_inventory(defines.inventory.car_trunk);
       if (not car_inv) then
         diag(1, "Failed to get car_trunk inventory!");
         return;
       end;
-      ammo_item_name = get_insertable_item(car_inv, turret_inv);
+      ammo_stack = get_insertable_stack(car_inv, turret_inv);
 
-      -- Here, if 'ammo_item_name' is nil, we do not try changing the turret type.
+      -- Here, if 'ammo_stack' is nil, we do not try changing the turret type.
       -- The rationale is that, since a given tank can only fire one kind
       -- of ammo as long as it has any, the player ought to explicitly
       -- choose one.  They do that by loading ammo into a tank ammo
@@ -768,44 +786,24 @@ local function maybe_load_robotank_turret_ammo(controller)
       -- while in the field.
     end;
 
-    if (ammo_item_name) then
-      -- TODO: Rewrite this to use "swap" primitive.
+    if (ammo_stack) then
+      -- Move the entire stack into the turret.
 
-      -- Move up to 'ammo_move_magazine_count' ammo magazines into the turret.
-      local got = car_inv.remove{name=ammo_item_name, count=ammo_move_magazine_count};
-      if (got < 1) then
-        diag(1, "Failed to remove ammo from trunk!");
+      -- Find an empty slot.
+      local turret_stack, turret_inv_slot_num = turret_inv.find_empty_stack(src_stack);
+      if (turret_stack == nil) then
+        diag(1, "Failed to find an empty slot in the turret!");
+
       else
-        local put = turret_inv.insert{name=ammo_item_name, count=got};
-        if (put < 1) then
-          diag(1, "Failed to add ammo to turret!");
-        else
-          diag(2, "Loaded " .. put ..
-               " ammo magazines of type " .. ammo_item_name ..
+        -- Swap the stacks to effect a lossless, dup-less transfer.
+        if (ammo_stack.swap_stack(turret_stack)) then
+          diag(2, "Loaded " .. turret_stack.count ..
+               " ammo magazines of type " .. turret_stack.name ..
                " into turret of unit " .. controller.entity.unit_number .. ".");
 
-          if (put < got) then
-            -- We could not fit all of the ammo into the turret.  Put the
-            -- remainder back into the car inventory.  This can happen if
-            -- 'ammo_move_magazine_count' is set to something larger than
-            -- one ammo stack.  I don't think that is possible with vanilla
-            -- ammo though.
-            local remainder = got - put;
-            local putback = car_inv.insert{name=ammo_item_name, count=remainder};
-            if (putback ~= remainder) then
-              -- I could spill the extras onto the ground, but this
-              -- should be impossible (since I just removed the items
-              -- from the inventory, so there is space).
-              diag(1, "WARNING: Tried to return " .. remainder ..
-                      " items of type " .. ammo_item_name ..
-                      " to unit " .. controller.entity.unit_number ..
-                      ", but only " .. putback ..
-                      " were returned, thus destroying " .. (remainder-putback) ..
-                      " items!");
-            else
-              diag(2, "Returned " .. remainder .. " items to the vehicle inventory.");
-            end;
-          end;
+        else
+          diag(1, "Failed to add ammo to turret!");
+
         end;
       end;
     end;
