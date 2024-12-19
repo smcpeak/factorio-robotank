@@ -1425,8 +1425,8 @@ local function update_robotank_player_index_on_tick(tick, player_index, pi_contr
   end;
 
   -- Hoist a couple of variables out of the driving routine.
-  local commander_vehicle = nil;
-  local commander_velocity = nil;
+  local driving_commander_vehicle = nil;
+  local driving_commander_velocity = nil;
   if (check_driving) then
     driving_commander_vehicle = commander_controller.entity;
 
