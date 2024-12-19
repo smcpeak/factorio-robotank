@@ -1,7 +1,6 @@
 -- RoboTank control.lua
 -- Actions that run while the user is playing the game.
 
-require "util"             -- table.deepcopy
 require "lua_util"         -- add_vec, etc.
 require "factorio_util"    -- vehicle_velocity, etc.
 
