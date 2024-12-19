@@ -181,9 +181,7 @@ end;
 -- however.
 local robotank_turret_entity = table.deepcopy(data.raw["ammo-turret"]["gun-turret"]);
 
--- This should ideally be renamed to "robotank-gun-turret-entity", but
--- I don't know how to do that in a backward compatible way yet.
-robotank_turret_entity.name = "robotank-turret-entity";
+robotank_turret_entity.name = "robotank-gun-turret";
 
 -- Disable all collision so it does not collide with parent tank.
 robotank_turret_entity.collision_mask = {
@@ -289,7 +287,7 @@ end;
 -- Make a hidden cannon turret as well so that RoboTanks have the option
 -- to fire cannon shells.
 local robotank_cannon_turret_entity = table.deepcopy(robotank_turret_entity);
-robotank_cannon_turret_entity.name = "robotank-cannon-turret-entity";
+robotank_cannon_turret_entity.name = "robotank-cannon-turret";
 robotank_cannon_turret_entity.attack_parameters =
   table.deepcopy(data.raw.gun["tank-cannon"].attack_parameters);
 

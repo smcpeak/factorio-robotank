@@ -138,8 +138,8 @@ local unit_number_to_nearby_controllers = {};
 
 -- Map from hidden turret entity name to true.
 local robotank_turret_entity_name_set = {
-  ["robotank-turret-entity"]        = true,
-  ["robotank-cannon-turret-entity"] = true,
+  ["robotank-gun-turret"]    = true,
+  ["robotank-cannon-turret"] = true,
 };
 
 -- Map from ammo_category to hidden turret entity name that can fire
@@ -147,8 +147,8 @@ local robotank_turret_entity_name_set = {
 --
 -- Eventually I'd like to expand this to handle more ammo types.
 local ammo_category_to_turret_name = {
-  ["bullet"]              = "robotank-turret-entity",
-  ["cannon-shell"]        = "robotank-cannon-turret-entity",
+  ["bullet"]              = "robotank-gun-turret",
+  ["cannon-shell"]        = "robotank-cannon-turret",
 };
 
 
@@ -357,7 +357,7 @@ local function add_entity(e)
       controller.turret = e.surface.create_entity{
         -- Initially, create it as a gun turret.  It may be changed
         -- once we load some ammo.
-        name = "robotank-turret-entity",
+        name = "robotank-gun-turret",
         position = controller.entity.position,
         force = e.force};
       if (controller.turret) then
