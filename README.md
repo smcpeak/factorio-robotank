@@ -1,5 +1,6 @@
 Introduction
 ============
+
 RoboTank is a mod for [Factorio](https://wiki.factorio.com/).  It adds
 an entity called RoboTank that is like the stock tank except it will
 follow and fight with the player.  It is possible to build a squad of
@@ -9,6 +10,7 @@ creep" tactic.
 
 Manual Installation
 ===================
+
 Copy the release zip file (RoboTank_X.Y.Z.zip) into the "mods" subfolder
 of the [User Data Directory](https://wiki.factorio.com/Application_directory#User_Data_directory).
 Then start (or restart) Factorio.  It should then appear in the Mods
@@ -16,6 +18,7 @@ list available from the Factorio main menu, initially enabled.
 
 Usage
 =====
+
 First unlock the RoboTank technology.  It requires Robotics, Tank,
 and Advanced Electronics 2 ("Blue Circuits") to be researched first.
 
@@ -44,6 +47,7 @@ easier time matching the commander's movements.
 
 Features
 ========
+
 RoboTanks can fire either bullets or cannon shells, depending on
 which is loaded into the ammo slot first.  Once that category is
 exhausted, it will switch to the other category if available in an
@@ -52,7 +56,7 @@ active category from the vehicle trunk, but will not switch ammo
 categories by taking from the trunk.
 
 RoboTanks will try to avoid running into each other, with any other
-vehicle, and with the player.
+vehicle on the same force (set of allied players), and with the player.
 
 RoboTanks that become "stuck" will try to escape by reversing a
 short distance and trying again.
@@ -72,8 +76,45 @@ into each other, so can be maneuvered in reasonably close proximity.
 However, while the mod is intended to be usable in PvP scenarios, that
 has not been tested.
 
+Operation on multiple surfaces (planets)
+========================================
+
+RoboTanks on each surface (planet) operate independently of other
+surfaces.  At any moment, there can only be one active commander vehicle
+per player, but when the player changes surfaces (including by using the
+map view), the active commander vehicle changes accordingly.
+Consequently, one can have a deployed squad on each surface, each of
+which will only self-drive when the commander is on the same surface.
+
+Furthermore, remote driving works for both the commander vehicle and the
+RoboTanks.  The RoboTanks even know to not run over the idle player
+character!
+
+Beware: Although robots can place tanks, they cannot pick them up again
+(this is just a limitation in Factorio), and the only way to rearrange
+the formation is by picking up and putting down each RoboTank (even
+after manually driving a RoboTank, it will return to its previously
+assigned position).  Consequently, remote squad operation is not
+feature-complete.
+
+Balance issues
+==============
+
+RoboTanks do not know how to navigate around cliffs (or anything else).
+In Factorio Space Age, cliff explosives are not unlocked for quite a
+while, during which time it is consequently very difficult to make use
+of RoboTanks due to them frequently getting stuck on cliffs.
+Furthermore, by the time cliff explosives are available to clear the
+path, biters have evolved to the point where even a squad of half a
+dozen tanks with depleted uranium ammo gets wrecked by a medium-sized
+nest.
+
+Factorio 2.0 adds vehicle grids to tanks, and RoboTanks inherit them as
+well.  Thus, a squad could arguably have excessive equipment.
+
 Limitations
 ===========
+
 The vanilla cannon shells do friendly fire damage.  The RoboTank firing
 logic is oblivious to this, and will therefore damage other squad members
 while trying to hit nearby enemies with cannon shells.  You will probably
@@ -90,8 +131,8 @@ RoboTank collision avoidance is far from perfect.  They will run into
 each other and/or become stuck if you maneuver the commander too
 aggressively.
 
-You should only have one transmitter.  Putting transmitters in multiple
-vehicles will probably confuse the RoboTanks.
+You should only have one transmitter (on each surface).  Putting
+transmitters in multiple vehicles will probably confuse the RoboTanks.
 
 Gates do not open for RoboTanks.  For now, it's best to assemble the
 squad outside your walls.
@@ -101,9 +142,10 @@ make a RoboTank and forget about it, then later make a commander on the
 other side of your base, the forgotten RoboTank might go on an inadvertent
 rampage inside your base before you notice.
 
-A portion of the ammo placed in a RoboTank seems to disappear.  This
+The first stack of ammo placed in a RoboTank seems to disappear.  This
 happens because, internally, it has been moved to a hidden turret entity
-that does the firing.  You get the ammo back when you pick up the tank.
+that does the firing.  You get any unfired ammo back when you pick up
+the tank.
 
 When a RoboTank exhausts the ammo stack it is using internally, an alert
 is shown saying a turret ran out of ammo, even if it successfully
@@ -128,6 +170,7 @@ had RoboTank installed into Factorio 2.x.
 
 Known Issues with Other Mods
 ============================
+
 [SchallTankPlatoon](https://mods.factorio.com/mod/SchallTankPlatoon) introduces
 a replacement suite of armored vehicles.  Any of its vehicles can function as a
 commander, but none can be robotically controlled.  Additionally, by default it
@@ -138,6 +181,7 @@ re-enable the vanilla recipe.  See the
 
 Links
 =====
+
 Factorio mod portal page: https://mods.factorio.com/mods/smcpeak/RoboTank
 
 Github repo: https://github.com/smcpeak/factorio-robotank
