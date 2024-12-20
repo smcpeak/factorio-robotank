@@ -104,10 +104,6 @@ RoboTanks do not know how to navigate around cliffs (or anything else).
 In Factorio Space Age, cliff explosives are not unlocked for quite a
 while, during which time it is consequently very difficult to make use
 of RoboTanks due to them frequently getting stuck on cliffs.
-Furthermore, by the time cliff explosives are available to clear the
-path, biters have evolved to the point where even a squad of half a
-dozen tanks with depleted uranium ammo gets wrecked by a medium-sized
-nest.
 
 Factorio 2.0 adds vehicle grids to tanks, and RoboTanks inherit them as
 well.  Thus, a squad could arguably have excessive equipment.
