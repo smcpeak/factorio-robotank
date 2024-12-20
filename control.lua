@@ -1787,6 +1787,24 @@ script.on_event({defines.events.on_entity_died},
 );
 
 
+-- Called when a player changes surfaces.  This happens frequently in
+-- Factorio Space Age, so must be handled more efficiently than a full
+-- rescan.
+local function on_player_changed_surface(event)
+  diag(2, "RoboTank: on_player_changed_surface:" ..
+          " player_index=" .. event.player_index ..
+          " old_surface_index=" .. tostring(event.surface_index));
+
+  -- There's actually nothing to do!  My data structures do not record
+  -- the surface of any controller.  I'll keep the event handler for
+  -- diagnostic purposes.
+
+end;
+
+script.on_event({defines.events.on_player_changed_surface},
+                on_player_changed_surface);
+
+
 -- Called when an event fires that might change the set of player
 -- characters in the world.  I say "might" because I do not understand
 -- the lifecycle.
@@ -1805,7 +1823,6 @@ end;
 script.on_event(
   {
     -- Events that seem like they might be relevant.
-    defines.events.on_player_changed_surface,
     defines.events.on_player_created,
     defines.events.on_player_died,
     defines.events.on_player_joined_game,
