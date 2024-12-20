@@ -123,6 +123,10 @@ their projectiles start 5 units away.  (Otherwise, the shell fired by
 the hidden turret would strike the RoboTank hull.)  For simplicity,
 this minimum range is active even when using Smart Cannon Shells.
 
+There is no way to tell how much ammo a tank has in its hidden turret
+entity; hovering the mouse over a RoboTank only shows what is in the
+tank's visible inventory.
+
 RoboTank collision avoidance is far from perfect.  They will run into
 each other and/or become stuck if you maneuver the commander too
 aggressively.
