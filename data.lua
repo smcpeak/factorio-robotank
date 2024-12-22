@@ -167,6 +167,13 @@ for _, layer in pairs(robotank_entity.animation.layers) do
   end;
 end;
 
+-- When a RoboTank dies, it is usually in the middle of a big biter
+-- nest.  Sending a robot to replace it is a pointless waste, since both
+-- the robot and the tank will quickly be destroyed.  Furthermore, even
+-- if the effort is successful, the new tank will have the wrong
+-- formation position.
+robotank_entity.create_ghost_on_death = false;
+
 
 -- World entity for the robotank turret.  Conceptually, I want the tank
 -- to attack with its own, normal machine gun.  But it is somewhat
