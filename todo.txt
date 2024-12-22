@@ -1,5 +1,26 @@
 TODO list for RoboTank mod
 
+
+Allow robots to pick up RoboTanks
+
+Change the recipe to not use a vanilla tank as input
+
+Maybe allow formation rearrangement?
+
+Put a sticker on the vehicle when it is low on fuel or ammo
+
+Change the firing offset back to the default since not using smart
+shells is pointless
+
+Provide a way to show the damage stats for each tank?
+
+Boost the turret traverse speed
+
+
+
+
+Older ideas:
+
 - Questionable behavior when multiple transmitters present
 - Organize robotanks into squads
   - Limit the number of tanks in a squad
