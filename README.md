@@ -191,7 +191,7 @@ Other recommended mods
 
 If RoboTanks are to fire cannon shells (rather than only submachine gun
 ammo), they must use
-[https://mods.factorio.com/mod/SmartCannonShells](Smart Cannon Shells),
+[Smart Cannon Shells](https://mods.factorio.com/mod/SmartCannonShells),
 otherwise every shot will just hit the tank that fired it.
 
 To avoid construction robots dying needlessly in combat while trying to
