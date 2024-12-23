@@ -210,8 +210,8 @@ battle.
 Adding
 [Bulldozer Equipment](https://mods.factorio.com/mod/BulldozerEquipment)
 to RoboTanks will clear trees, rocks, cliffs, and water out of the way
-of the squad's advance, which is quite useful since RoboTanks are bad at
-dealing with obstacles.
+of the squad's advance, which is quite useful since RoboTanks can't
+really navigate around obstacles.
 
 Links
 =====
