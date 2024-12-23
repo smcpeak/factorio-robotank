@@ -22,6 +22,8 @@ Boost the turret traverse speed
 
 Add mod recommendation for Bulldozer Equipment once released
 
+Allow tanks to approach each other more closely when moving at slow
+speed, to aid in getting back into formation?
 
 
 
