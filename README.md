@@ -186,13 +186,27 @@ I have made no attempt to migrate RoboTank entities from the 1.x series.
 I don't know what will happen if you load a world from Factorio 1.x that
 had RoboTank installed into Factorio 2.x.
 
+Other recommended mods
+======================
+
+If RoboTanks are to fire cannon shells (rather than only submachine gun
+ammo), they must use
+[https://mods.factorio.com/mod/SmartCannonShells](Smart Cannon Shells),
+otherwise every shot will just hit the tank that fired it.
+
+To avoid construction robots dying needlessly in combat while trying to
+repair RoboTanks under fire, you can use
+[Hide Repair Packs](https://mods.factorio.com/mod/HideRepairPacks).
+
+If you like to mix in some nukes with your tanks, the
+[Safety Nuke Launcher](https://mods.factorio.com/mod/SafetyNukeLauncher)
+will help avoid accidentally nuking yourself.
+
 Links
 =====
 
 Factorio mod portal page: https://mods.factorio.com/mods/smcpeak/RoboTank
 
 Github repo: https://github.com/smcpeak/factorio-robotank
-
-Smart Cannon Shells mod: https://mods.factorio.com/mod/SmartCannonShells
 
 Demo video on YouTube: https://www.youtube.com/watch?v=M64LyVkl6Ac

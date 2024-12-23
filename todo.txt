@@ -20,10 +20,7 @@ Provide a way to show the damage stats for each tank?
 
 Boost the turret traverse speed
 
-Add mod recommendations:
-  - Smart Cannon Shells
-  - Hide Repair Packs
-  - Bulldozer Equipment (once released)
+Add mod recommendation for Bulldozer Equipment once released
 
 
 
