@@ -12,11 +12,13 @@ Maybe allow formation rearrangement?
 
 Put an icon on the vehicle when it is low on fuel or ammo
 
+  Don't know how.
+
 Provide a way to show the damage stats for each tank?
 
-Boost the turret traverse speed
+  Don't know how.
 
-Use color setting type for color
+Boost the turret traverse speed
 
 Add mod recommendations:
   - Smart Cannon Shells

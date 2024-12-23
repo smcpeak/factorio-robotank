@@ -6,15 +6,8 @@ local show_hidden_turret = false;
 
 -- Tint to apply to robotanks to distinguish them visually from
 -- other vehicles.
-local robotank_tint = {
-  r = settings.startup["robotank-color-red"].value;
-  g = settings.startup["robotank-color-green"].value;
-  b = settings.startup["robotank-color-blue"].value;
+local robotank_tint = settings.startup["robotank-color"].value;
 
-  -- The alpha value is not configurable.  If this is less than
-  -- one, the tank is partially transparent, which looks wrong.
-  a = 1.0,
-};
 
 -- Technology to make robotanks and transmitters.
 local robotank_technology = {

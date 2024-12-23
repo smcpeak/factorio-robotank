@@ -33,38 +33,11 @@ data:extend({
   },
 
   -- Color of a RoboTank.
-  --
-  -- Since there is no setting type for a color, I have to make this
-  -- three different settings.
-  --
-  -- TODO: There now is a color setting type, so I should use that.
-  --
   {
-    type = "double-setting",
-    name = "robotank-color-red",
-    order = "c1",
+    type = "color-setting",
+    name = "robotank-color",
     setting_type = "startup",
-    default_value = 0.7,
-    minimum_value = 0,
-    maximum_value = 1.0,
-  },
-  {
-    type = "double-setting",
-    name = "robotank-color-green",
-    order = "c2",
-    setting_type = "startup",
-    default_value = 0.7,
-    minimum_value = 0,
-    maximum_value = 1.0,
-  },
-  {
-    type = "double-setting",
-    name = "robotank-color-blue",
-    order = "c3",
-    setting_type = "startup",
-    default_value = 1.0,
-    minimum_value = 0,
-    maximum_value = 1.0,
+    default_value = { r=0.7, g=0.7, b=1.0, a=1.0 },
   },
 });
 

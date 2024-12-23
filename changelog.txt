@@ -6,6 +6,7 @@ Date: 2024-12-21
     - Recipe now takes vanilla tank's ingredients, rather than a tank, since the latter effectively allowed re-rolling the vehicle quality.
   Changes:
     - The imposition of a minimum cannon range is now configurable, and defaults to off.  This fixes the muzzle flash alignment problem, but means that vanilla (rather than smart) shells do exclusively friendly fire damage without that setting.
+    - The color tint setting now uses the built-in color picker instead of separate R/G/B components.  The old setting value is not preserved across upgrade.
 ---------------------------------------------------------------------------------------------------
 Version: 2.0.1
 Date: 2024-12-20
