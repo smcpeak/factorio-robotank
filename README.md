@@ -77,7 +77,7 @@ However, while the mod is intended to be usable in PvP scenarios, that
 has not been tested.
 
 Operation on multiple surfaces (planets)
-========================================
+----------------------------------------
 
 RoboTanks on each surface (planet) operate independently of other
 surfaces.  At any moment, there can only be one active commander vehicle
@@ -90,12 +90,22 @@ Furthermore, remote driving works for both the commander vehicle and the
 RoboTanks.  The RoboTanks even know to not run over the idle player
 character!
 
-Beware: Although robots can place tanks, they cannot pick them up again
-(this is just a limitation in Factorio), and the only way to rearrange
-the formation is by picking up and putting down each RoboTank (even
-after manually driving a RoboTank, it will return to its previously
-assigned position).  Consequently, remote squad operation is not
-feature-complete.
+Construction and deconstruction by robots
+-----------------------------------------
+
+RoboTanks can be put into a blueprint, and that will record the fuel,
+equipment grid contents, and logistic requests.  This makes it possible
+to quickly deploy a squad with all gear.
+
+RoboTanks cannot be marked for deconstruction by robots using a
+deconstruction planner; see forum post
+[2.0.12 Cannot deconstruct Tank with deconstruction planner](https://forums.factorio.com/viewtopic.php?f=23&t=118929).
+However, as noted in a reply on that post, it *is* possible to
+right-click-and-hold from the map view to mark them one at a time for
+deconstruction.  In that case, the ammo that was loaded into the
+hidden turret entity spills out onto the ground, and the bots then
+pick up that ammo, which is a bit inelegant but it works and no ammo
+is lost in the process.
 
 Balance issues
 ==============

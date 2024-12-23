@@ -3,6 +3,9 @@ TODO list for RoboTank mod
 
 Allow robots to pick up RoboTanks
 
+  Seems to not be posslbe:
+  https://forums.factorio.com/viewtopic.php?f=23&t=118929
+
 Change the recipe to not use a vanilla tank as input
 
 Maybe allow formation rearrangement?
