@@ -202,6 +202,17 @@ If you like to mix in some nukes with your tanks, the
 [Safety Nuke Launcher](https://mods.factorio.com/mod/SafetyNukeLauncher)
 will help avoid accidentally nuking yourself.
 
+[Faster Tank Turret](https://mods.factorio.com/mod/FasterTankTurret)
+helps make the tank cannon weapon responsive.  That doesn't much affect
+RoboTanks, but it does make your own commander tank more useful in
+battle.
+
+Adding
+[Bulldozer Equipment](https://mods.factorio.com/mod/BulldozerEquipment)
+to RoboTanks will clear trees, rocks, cliffs, and water out of the way
+of the squad's advance, which is quite useful since RoboTanks are bad at
+dealing with obstacles.
+
 Links
 =====
 
