@@ -115,9 +115,6 @@ In Factorio Space Age, cliff explosives are not unlocked for quite a
 while, during which time it is consequently very difficult to make use
 of RoboTanks due to them frequently getting stuck on cliffs.
 
-Factorio 2.0 adds vehicle grids to tanks, and RoboTanks inherit them as
-well.  Thus, a squad could arguably have excessive equipment.
-
 Limitations
 ===========
 
@@ -177,17 +174,6 @@ turret aim direction is re-established.
 I have made no attempt to migrate RoboTank entities from the 1.x series.
 I don't know what will happen if you load a world from Factorio 1.x that
 had RoboTank installed into Factorio 2.x.
-
-Known Issues with Other Mods
-============================
-
-[SchallTankPlatoon](https://mods.factorio.com/mod/SchallTankPlatoon) introduces
-a replacement suite of armored vehicles.  Any of its vehicles can function as a
-commander, but none can be robotically controlled.  Additionally, by default it
-disables the recipe for the vanilla tank, but that is an ingredient for a RoboTank,
-so one must change the SchallTankPlatoon configuration settings (in the GUI) to
-re-enable the vanilla recipe.  See the
-[SchallTankPlatoon FAQ](https://mods.factorio.com/mod/SchallTankPlatoon/faq) for details.
 
 Links
 =====

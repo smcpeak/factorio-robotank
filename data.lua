@@ -103,13 +103,37 @@ local robotank_recipe = {
   type = "recipe",
   name = "robotank",
   enabled = false,
-  energy_required = 2,            -- 2 seconds to build.
+
+  -- The vanilla tank takes 5 seconds to build.  Originally RoboTank
+  -- took 2 seconds, but now that it uses the vanilla tank's ingredients
+  -- instead of the tank itself, it should have a longer build time.
+  energy_required = 7,
+
   ingredients = {
-    -- Base vehicle.
+    -- Same ingredients as the tank, except that red circuits are
+    -- removed to limit the number of distinct ingredients to 5, and
+    -- because they would be a bit redundant with the blue circuits.
+    --
+    -- Originally this recipe just accepted a vanilla tank, but that
+    -- opens a bit of an exploit with the quality system because it
+    -- effectively offers a second chance to get a quality bump.  Also,
+    -- not using the vanilla tank as input removes a conflict with other
+    -- mods that delete that recipe.
+    --
     {
-      amount = 1,
-      name = "tank",
-      type = "item",
+      amount = 32,
+      name = "engine-unit",
+      type = "item"
+    },
+    {
+      amount = 50,
+      name = "steel-plate",
+      type = "item"
+    },
+    {
+      amount = 15,
+      name = "iron-gear-wheel",
+      type = "item"
     },
 
     -- Computer for driving and shooting algorithms.

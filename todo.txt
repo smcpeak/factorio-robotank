@@ -6,11 +6,11 @@ Allow robots to pick up RoboTanks
   Seems to not be posslbe:
   https://forums.factorio.com/viewtopic.php?f=23&t=118929
 
-Change the recipe to not use a vanilla tank as input
+Use the pathfinding API when a tank is stuck
 
 Maybe allow formation rearrangement?
 
-Put a sticker on the vehicle when it is low on fuel or ammo
+Put an icon on the vehicle when it is low on fuel or ammo
 
 Change the firing offset back to the default since not using smart
 shells is pointless
