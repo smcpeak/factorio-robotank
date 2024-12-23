@@ -3,7 +3,9 @@ Version: 2.1.0
 Date: 2024-12-21
   Balance:
     - Do not create a ghost when a RoboTank dies, since replacing one in combat is suicidal.
-    - Recipe now takes vanilla tank's ingredients, rather than a tank, since the latter effectively allows re-rolling the vehicle quality.
+    - Recipe now takes vanilla tank's ingredients, rather than a tank, since the latter effectively allowed re-rolling the vehicle quality.
+  Changes:
+    - The imposition of a minimum cannon range is now configurable, and defaults to off.  This fixes the muzzle flash alignment problem, but means that vanilla (rather than smart) shells do exclusively friendly fire damage without that setting.
 ---------------------------------------------------------------------------------------------------
 Version: 2.0.1
 Date: 2024-12-20

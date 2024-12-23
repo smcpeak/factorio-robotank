@@ -325,12 +325,16 @@ robotank_cannon_turret_entity.name = "robotank-cannon-turret";
 robotank_cannon_turret_entity.attack_parameters =
   table.deepcopy(data.raw.gun["tank-cannon"].attack_parameters);
 
--- This prevents the RoboTank from damaging itself when using the cannon.
---
--- It hits itself sometimes with min_range of 4, even though that seems
--- like it should be well beyond the danger zone.
-robotank_cannon_turret_entity.attack_parameters.min_range = 5;
-robotank_cannon_turret_entity.attack_parameters.projectile_creation_distance = 5;
+
+if (settings.startup["robotank-impose-cannon-minimum-range"].value) then
+  -- This prevents the RoboTank from damaging itself when using the
+  -- cannon and not using Smart Cannon Shells.
+  --
+  -- It hits itself sometimes with min_range of 4, even though that
+  -- seems like it should be well beyond the danger zone.
+  robotank_cannon_turret_entity.attack_parameters.min_range = 5;
+  robotank_cannon_turret_entity.attack_parameters.projectile_creation_distance = 5;
+end;
 
 
 -- Push the RoboTank things into the main data table.

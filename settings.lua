@@ -23,6 +23,15 @@ data:extend({
     maximum_value = 4,
   },
 
+  -- Whether to push the cannon projectile start point away from the
+  -- tank.
+  {
+    type = "bool-setting",
+    name = "robotank-impose-cannon-minimum-range",
+    setting_type = "startup",
+    default_value = false,
+  },
+
   -- Color of a RoboTank.
   --
   -- Since there is no setting type for a color, I have to make this
