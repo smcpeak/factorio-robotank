@@ -9,6 +9,8 @@ Date: 2024-12-22
     - The color tint setting now uses the built-in color picker instead of separate R/G/B components.  The old setting value is not preserved across upgrade.
   Dependencies:
     - Add Smart Cannon Shells as an optional dependency to emphasize its utility with RoboTank.
+    - Add Bulldozer Equipment as an optional dependency for the same reason.
+    - Add Faster Tank Turret as an optional dependency to ensure its buff precedes RoboTank copying the speed to its internal turret entity.
 ---------------------------------------------------------------------------------------------------
 Version: 2.0.1
 Date: 2024-12-20
