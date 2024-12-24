@@ -1,6 +1,6 @@
 ---------------------------------------------------------------------------------------------------
 Version: 2.1.0
-Date: 2024-12-22
+Date: 2024-12-24
   Balance:
     - Do not create a ghost when a RoboTank dies, since replacing one in combat is suicidal.
     - Recipe now takes vanilla tank's ingredients, rather than a tank, since the latter effectively allowed re-rolling the vehicle quality.
