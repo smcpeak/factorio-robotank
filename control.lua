@@ -258,6 +258,14 @@ local function check_invariants()
   for player_index, pi_controllers in pairs(storage.player_index_to_controllers) do
     for unit_number, controller in pairs(pi_controllers) do
       local entity = controller.entity;
+
+      if (not entity.valid) then
+        diag(1, "WARNING: Entity with unit number " .. unit_number ..
+                " in pi_controllers for player index " .. player_index ..
+                " is invalid.");
+        return false;
+      end;
+
       local entity_pi = player_index_of_entity(entity);
       if (player_index ~= entity_pi) then
         diag(1, "WARNING: Entity " .. entity.unit_number ..
@@ -281,6 +289,14 @@ local function check_invariants()
   for force, force_controllers in pairs(storage.force_to_controllers) do
     for unit_number, controller in pairs(force_controllers) do
       local entity = controller.entity;
+
+      if (not entity.valid) then
+        diag(1, "WARNING: Entity with unit number " .. unit_number ..
+                " in force_controllers for force \"" .. force ..
+                "\" is invalid.");
+        return false;
+      end;
+
       local entity_force = force_of_entity(entity);
       if (force ~= entity_force) then
         diag(1, "WARNING: Entity " .. entity.unit_number ..
@@ -840,6 +856,24 @@ local function predict_approach(p1, v1, p2, v2, dist)
   return ticks, angle;
 end;
 
+-- Deal with having discovered that a controller related to some unit
+-- has an invalid entity.  One way this happens is when the Jetpack mod
+-- transforms the player character (PC) into a flyable unit.  The PC has
+-- a controller (for collision avoidance) but becomes invalid as a
+-- result of that transformation.
+--
+-- We log the event and then arrange to refresh the data.
+local function found_invalid_entity(
+  data_name,       -- str: name of the data structure
+  unit_number,     -- int: unit we were processing
+  controller       -- controller that has an invalid entity
+)
+  diag(2, data_name .. " for unit " ..
+          unit_number .. " contains an invalid entity that had " ..
+          "unit number " .. controller.unit_number);
+  must_rescan_world = true;
+end;
+
 -- Return flags describing what is necessary for 'controller.entity'
 -- to avoid colliding with one of the 'force_controllers', which are
 -- associated with all entities with the same force.  'controller' is
@@ -887,7 +921,10 @@ local function collision_avoidance(tick, force_controllers, unit_number, control
   if (unit_number_to_nearby_controllers[unit_number] == nil or (tick % 60 == 0)) then
     unit_number_to_nearby_controllers[unit_number] = {};
     for _, other in pairs(force_controllers) do
-      if (other.entity ~= v and other.entity.surface == v_surface) then
+      if (not other.entity.valid) then
+        found_invalid_entity("Force controllers map", unit_number, other);
+
+      elseif (other.entity ~= v and other.entity.surface == v_surface) then
         -- The other entity is considered nearby if it is or will be
         -- within a certain, relatively large, distance before we next
         -- refresh the list of nearby entities.
@@ -953,10 +990,7 @@ local function collision_avoidance(tick, force_controllers, unit_number, control
       --]]
 
     else
-      -- I think I fixed the case where this was happening.
-      diag(1, "collision_avoidance: Nearby controllers list for unit " ..
-              unit_number .. " contains an invalid entity that had " ..
-              "unit number " .. other.unit_number);
+      found_invalid_entity("Nearby controllers list", unit_number, other);
 
     end;
   end;
@@ -1522,6 +1556,13 @@ local function update_robotank_player_index_on_tick(tick, player_index, pi_contr
       -- Double-check vehicle validity.
       if (not controller.entity.valid) then
         diag(2, "on_tick: Vehicle " .. unit_number .. " is invalid!");
+        remove_entity_controller(controller);
+        removed_vehicle = true;
+
+      elseif (not controller.turret.valid) then
+        -- I don't know how this could happen, but issue #6 seems to
+        -- imply it could, so be defensive.
+        diag(1, "on_tick: Turret for " .. unit_number .. " is invalid!");
         remove_entity_controller(controller);
         removed_vehicle = true;
 
