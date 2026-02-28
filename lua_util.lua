@@ -83,10 +83,9 @@ function normalize_vec(v)
   end;
 end;
 
--- Return the angle this vector makes with the horizontal, in
--- radians.  In the standard coordinate system, this is measured
--- counterclockwise; in Factorio, it is measured counterclockwise
--- (South of East).
+-- Return the angle this vector makes with the horizontal, in radians.
+-- In the standard coordinate system, this is measured counterclockwise;
+-- in Factorio, it is measured clockwise (south of east).
 function vector_to_angle(v)
   return math.atan2(v.y, v.x);
 end;
