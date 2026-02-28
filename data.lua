@@ -31,7 +31,7 @@ local robotank_technology = {
     "robotics",                        -- Flying robot frame.
     "tank"                             -- Ordinary tank.
   },
-  unit = data.raw["technology"].tank.unit,   -- Same cost as regular tank.
+  unit = table.deepcopy(data.raw["technology"].tank.unit),   -- Same cost as regular tank.
 };
 
 -- Recipe to allow one to create the transmitter that controls robotanks.

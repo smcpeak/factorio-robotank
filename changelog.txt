@@ -1,4 +1,9 @@
 ---------------------------------------------------------------------------------------------------
+Version: 2.2.1
+Date: 2026-02-27
+  Bugfixes:
+    - Issue #7: The vanilla tank research cost was inappropriately linked rather than copied to RoboTank, interfering with other mods that might change either.
+---------------------------------------------------------------------------------------------------
 Version: 2.2.0
 Date: 2025-11-20
   Bugfixes:
