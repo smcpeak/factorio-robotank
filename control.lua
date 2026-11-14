@@ -758,7 +758,8 @@ local function maybe_load_robotank_turret_ammo(controller)
       -- Move the entire stack into the turret.
 
       -- Find an empty slot.
-      local turret_stack, turret_inv_slot_num = turret_inv.find_empty_stack(src_stack);
+      local turret_stack, turret_inv_slot_num =
+        turret_inv.find_empty_stack(ammo_stack);
       if (turret_stack == nil) then
         diag(1, "Failed to find an empty slot in the turret!");
 
