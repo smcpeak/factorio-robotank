@@ -1890,7 +1890,7 @@ local function on_player_driving_changed_state(event)
         -- the player-controlled tank machine gun could fire, thus
         -- effectively doubling the firepower of one vehicle.
         diag(2, "Disabling turret of vehicle " .. controller.entity.unit_number .. ".");
-        controller.turret.active = false;
+        controller.turret.disabled_by_script = true;
       end;
     else
       diag(2, "Player character " .. character.unit_number ..
@@ -1918,10 +1918,10 @@ local function on_player_driving_changed_state(event)
       end;
       for unit_number, controller in pairs(pi_controllers) do
         if (controller.turret ~= nil and
-            controller.turret.active == false and
+            controller.turret.disabled_by_script == true and
             controller.entity.get_driver() == nil) then
           diag(2, "Re-enabling turret of vehicle " .. controller.entity.unit_number .. ".");
-          controller.turret.active = true;
+          controller.turret.disabled_by_script = false;
         end;
       end;
     end;
